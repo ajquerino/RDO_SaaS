@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, type Dashboard as Dash } from "../lib/api";
+import { api, type Dashboard as Dash, type Produtividade as Prod } from "../lib/api";
 
 const FAROL: Record<string, { cor: string; rotulo: string }> = {
   verde: { cor: "#10b981", rotulo: "No prazo" },
@@ -41,6 +41,18 @@ export default function Dashboard({ obraId }: { obraId: string }) {
           <BarraRotulada rotulo="Previsto" valor={data.hh.previsto} max={Math.max(data.hh.previsto, data.hh.realizado, 1)} cor="#64748b" />
           <BarraRotulada rotulo="Realizado" valor={data.hh.realizado} max={Math.max(data.hh.previsto, data.hh.realizado, 1)} cor="#0ea5e9" />
         </div>
+      </Painel>
+
+      {/* Produtividade — HH direto x indireto */}
+      <Painel titulo="HH direto × indireto">
+        <Produtividade p={data.produtividade} />
+      </Painel>
+
+      {/* Efetivo por função */}
+      <Painel titulo="Efetivo por função (HH)">
+        {data.produtividade.porFuncao.length > 0 ? (
+          <Pareto itens={data.produtividade.porFuncao.map((f) => ({ rotulo: f.funcao, valor: f.hh, extra: `${f.pessoas} pess.` }))} cor="#8b5cf6" sufixo=" HH" />
+        ) : <Vazio texto="Sem efetivo lançado." />}
       </Painel>
 
       {/* Curva S */}
@@ -170,6 +182,31 @@ function CurvaS({ pontos }: { pontos: { data: string; previstoPct: number; reali
       <div className="flex gap-4 text-xs text-slate-400 mt-1">
         <span className="flex items-center gap-1"><span className="inline-block w-4 border-t-2 border-dashed border-slate-500" /> Previsto</span>
         <span className="flex items-center gap-1"><span className="inline-block w-4 border-t-2 border-sky-500" /> Realizado</span>
+      </div>
+    </div>
+  );
+}
+
+function Produtividade({ p }: { p: Prod }) {
+  const total = p.hhDireto + p.hhIndireto;
+  if (total <= 0 && p.hhNaoClassificado <= 0) return <Vazio texto="Sem HH lançado." />;
+  const fmt = (v: number) => v.toLocaleString("pt-BR");
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Cartao rotulo="HH direto" valor={fmt(p.hhDireto)} sub={`${p.pctDireto}%`} />
+        <Cartao rotulo="HH indireto" valor={fmt(p.hhIndireto)} sub={`${p.pctIndireto}%`} />
+        <Cartao rotulo="Não classificado" valor={fmt(p.hhNaoClassificado)} sub="função fora do catálogo" />
+      </div>
+      {total > 0 && (
+        <div className="flex h-4 overflow-hidden rounded-full bg-slate-700">
+          <div className="h-4" style={{ width: `${(p.hhDireto / total) * 100}%`, background: "#10b981" }} title={`Direto ${p.pctDireto}%`} />
+          <div className="h-4" style={{ width: `${(p.hhIndireto / total) * 100}%`, background: "#f59e0b" }} title={`Indireto ${p.pctIndireto}%`} />
+        </div>
+      )}
+      <div className="flex gap-4 text-xs text-slate-400">
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded" style={{ background: "#10b981" }} /> Direto</span>
+        <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded" style={{ background: "#f59e0b" }} /> Indireto</span>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/
 import Rdo from "./Rdo";
 import Dashboard from "./Dashboard";
 import Medicao from "./Medicao";
+import Documentos from "./Documentos";
 
 const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
@@ -79,7 +80,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
-  const [sub, setSub] = useState<"detalhe" | "dashboard" | "medicao">("detalhe");
+  const [sub, setSub] = useState<"detalhe" | "dashboard" | "medicao" | "documentos">("detalhe");
 
   const { data } = useQuery({ queryKey: ["obra", obraId], queryFn: () => api<ObraDetalhe>(`/api/v1/obras/${obraId}`) });
   const { data: usuarios } = useQuery({ queryKey: ["usuarios"], queryFn: () => api<Usuario[]>("/api/v1/usuarios"), enabled: gereObras });
@@ -117,19 +118,20 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
 
   return (
     <div className="border-t border-slate-700 px-4 py-4 space-y-4">
-      <div className="flex gap-1">
-        {(["detalhe", "dashboard", ...(gereObras ? ["medicao"] as const : [])] as const).map((s) => (
+      <div className="flex flex-wrap gap-1">
+        {(["detalhe", "dashboard", "documentos", ...(gereObras ? ["medicao"] as const : [])] as const).map((s) => (
           <button
             key={s}
             onClick={() => setSub(s)}
             className={`rounded-lg px-3 py-1.5 text-sm ${sub === s ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
           >
-            {s === "detalhe" ? "EAP & RDOs" : s === "dashboard" ? "Dashboard" : "Medição"}
+            {s === "detalhe" ? "EAP & RDOs" : s === "dashboard" ? "Dashboard" : s === "documentos" ? "Documentos" : "Medição"}
           </button>
         ))}
       </div>
 
       {sub === "dashboard" && <Dashboard obraId={obraId} />}
+      {sub === "documentos" && <Documentos obraId={obraId} />}
       {sub === "medicao" && gereObras && <Medicao obraId={obraId} />}
 
       {sub === "detalhe" && <>

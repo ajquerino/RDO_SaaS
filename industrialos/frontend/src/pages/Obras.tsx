@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiUpload, type Cliente, type ObraDetalhe, type ObraLista, type RdoLista } from "../lib/api";
 import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/auth";
 import Rdo from "./Rdo";
+import Dashboard from "./Dashboard";
 
 const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
@@ -77,6 +78,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
+  const [sub, setSub] = useState<"detalhe" | "dashboard">("detalhe");
 
   const { data } = useQuery({ queryKey: ["obra", obraId], queryFn: () => api<ObraDetalhe>(`/api/v1/obras/${obraId}`) });
   const { data: usuarios } = useQuery({ queryKey: ["usuarios"], queryFn: () => api<Usuario[]>("/api/v1/usuarios"), enabled: gereObras });
@@ -114,6 +116,21 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
 
   return (
     <div className="border-t border-slate-700 px-4 py-4 space-y-4">
+      <div className="flex gap-1">
+        {(["detalhe", "dashboard"] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setSub(s)}
+            className={`rounded-lg px-3 py-1.5 text-sm ${sub === s ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
+          >
+            {s === "detalhe" ? "EAP & RDOs" : "Dashboard"}
+          </button>
+        ))}
+      </div>
+
+      {sub === "dashboard" && <Dashboard obraId={obraId} />}
+
+      {sub === "detalhe" && <>
       {gereObras && (
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xlsm" className="text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white" />
@@ -188,6 +205,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
           {rdos?.length === 0 && <li className="text-slate-500 text-sm">Nenhum RDO ainda.</li>}
         </ul>
       </div>
+      </>}
     </div>
   );
 }

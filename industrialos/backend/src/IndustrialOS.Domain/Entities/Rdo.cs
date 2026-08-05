@@ -33,6 +33,11 @@ public class Rdo : BaseEntity
     public Guid? EnviadoPor { get; set; }
     public DateTime? EnviadoEm { get; set; }
 
+    // Revisao solicitada pelo fiscal (aprovacao por token)
+    public string? MotivoRevisao { get; set; }
+    public string? RevisadoPor { get; set; }
+    public DateTime? RevisadoEm { get; set; }
+
     // filhos (listas)
     public List<RdoEfetivo> Efetivo { get; set; } = [];
     public List<RdoParalisacao> Paralisacoes { get; set; } = [];

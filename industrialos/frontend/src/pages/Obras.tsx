@@ -4,6 +4,7 @@ import { api, apiUpload, type Cliente, type ObraDetalhe, type ObraLista, type Rd
 import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/auth";
 import Rdo from "./Rdo";
 import Dashboard from "./Dashboard";
+import Medicao from "./Medicao";
 
 const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
@@ -78,7 +79,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
-  const [sub, setSub] = useState<"detalhe" | "dashboard">("detalhe");
+  const [sub, setSub] = useState<"detalhe" | "dashboard" | "medicao">("detalhe");
 
   const { data } = useQuery({ queryKey: ["obra", obraId], queryFn: () => api<ObraDetalhe>(`/api/v1/obras/${obraId}`) });
   const { data: usuarios } = useQuery({ queryKey: ["usuarios"], queryFn: () => api<Usuario[]>("/api/v1/usuarios"), enabled: gereObras });
@@ -117,18 +118,19 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   return (
     <div className="border-t border-slate-700 px-4 py-4 space-y-4">
       <div className="flex gap-1">
-        {(["detalhe", "dashboard"] as const).map((s) => (
+        {(["detalhe", "dashboard", ...(gereObras ? ["medicao"] as const : [])] as const).map((s) => (
           <button
             key={s}
             onClick={() => setSub(s)}
             className={`rounded-lg px-3 py-1.5 text-sm ${sub === s ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-300 hover:bg-slate-600"}`}
           >
-            {s === "detalhe" ? "EAP & RDOs" : "Dashboard"}
+            {s === "detalhe" ? "EAP & RDOs" : s === "dashboard" ? "Dashboard" : "Medição"}
           </button>
         ))}
       </div>
 
       {sub === "dashboard" && <Dashboard obraId={obraId} />}
+      {sub === "medicao" && gereObras && <Medicao obraId={obraId} />}
 
       {sub === "detalhe" && <>
       {gereObras && (

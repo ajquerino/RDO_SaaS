@@ -19,6 +19,7 @@ public static class DependencyInjection
         s.AddScoped<IJwtService, JwtService>();
         s.AddScoped<Application.Import.ICronogramaImport, Import.CronogramaImport>();
         s.AddSingleton<Application.Pdf.IRdoPdf, Pdf.RdoPdf>();
+        s.AddSingleton<Application.Pdf.IMedicaoPdf, Pdf.MedicaoPdf>();
         s.AddSingleton<Application.Storage.IStorage, Storage.R2Storage>();
         return s;
     }

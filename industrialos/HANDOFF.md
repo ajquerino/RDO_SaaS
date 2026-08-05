@@ -13,8 +13,9 @@ SaaS multi-tenant de **Gestão Operacional de Obras Industriais** (montagem, cal
 ## Estado (Sprints)
 - **0 Fundação** ✅ · **1 Auth/RBAC/Usuários** ✅ · **2 Clientes/Obras/EAP/importar cronograma** ✅ · **3 RDO núcleo + PDF** ✅
 - **4 RDO parte 2** 🟡 — FEITO: fotos/vídeos (R2), catálogo de 61 funções (Direta/Indireta), clima por GPS, hora extra automática, seções (retrabalho, segurança, dificuldades, próximo dia, pendências, planejamento), PDF completo com todas as seções. **FALTA: Assinaturas (canvas — campo backend `rdos.Assinaturas` jsonb já existe), Offline-first (IndexedDB + fila de sync).**
+- **4 (continuação)** ✅ Assinaturas (canvas, `SignaturePad` em Rdo.tsx) + PDF completo (todas as seções + horas via `JornadaCalculo`). **Só falta Offline.**
 - **5 Aprovação por token + revisão** 🟡 (o "Finalizar" já gera `tokenAprovacao`; falta endpoint público `/aprovacao/{token}` + tela do fiscal Aprovar/Solicitar revisão).
-- **6 Dashboards/Curva S/Faróis/Pareto** ❌ (avanço por item já calculado em `AvancoCalculo`; falta agregar + telas).
+- **6 Dashboards/Curva S/Faróis/Pareto** 🟡 — **BACKEND FEITO**: `DashboardController` GET `/obras/{id}/dashboard` (avanço da obra HH-ponderado, avanço por item, HH previsto x realizado, efetivo médio, farol, Pareto paralisações/retrabalho). **FALTA: a tela (frontend)** — aba Dashboard com os números + gráficos (SVG simples, sem lib nova) + Curva S ainda não implementada.
 - **7 Medição/Faturamento/Custos** ❌ (modelo desenhado; obras já têm valor e prazo de pagamento).
 - **8 Equipamentos/Produtividade/Documentos** ❌ · **9 Hardening/LGPD/billing** ❌ · **IA** (fase futura).
 

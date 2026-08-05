@@ -3,8 +3,9 @@ import { useAuth, podeGerirObras, podeGerirUsuarios } from "../store/auth";
 import Obras from "./Obras";
 import Clientes from "./Clientes";
 import Usuarios from "./Usuarios";
+import Equipamentos from "./Equipamentos";
 
-type Aba = "obras" | "clientes" | "usuarios";
+type Aba = "obras" | "clientes" | "equipamentos" | "usuarios";
 
 export default function Home() {
   const { usuario, logout } = useAuth();
@@ -15,6 +16,7 @@ export default function Home() {
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
     { id: "obras", rotulo: "Obras", visivel: true },
     { id: "clientes", rotulo: "Clientes", visivel: gereObras },
+    { id: "equipamentos", rotulo: "Equipamentos", visivel: gereObras },
     { id: "usuarios", rotulo: "Usuários", visivel: gereUsuarios },
   ];
 
@@ -43,6 +45,7 @@ export default function Home() {
       <section className="mx-auto max-w-3xl p-4">
         {aba === "obras" && <Obras />}
         {aba === "clientes" && gereObras && <Clientes />}
+        {aba === "equipamentos" && gereObras && <Equipamentos />}
         {aba === "usuarios" && gereUsuarios && <Usuarios />}
       </section>
     </main>

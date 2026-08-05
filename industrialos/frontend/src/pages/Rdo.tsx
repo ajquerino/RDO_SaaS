@@ -82,6 +82,7 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
 
   const { data: itens } = useQuery({ queryKey: ["itens", obraId], queryFn: () => api<ObraItem[]>(`/api/v1/obras/${obraId}/itens`) });
   const { data: funcoes } = useQuery({ queryKey: ["funcoes"], queryFn: () => api<{ id: string; nome: string }[]>("/api/v1/funcoes") });
+  const { data: equipamentos } = useQuery({ queryKey: ["equipamentos"], queryFn: () => api<{ id: string; nome: string }[]>("/api/v1/equipamentos") });
 
   // carrega o RDO
   useEffect(() => {
@@ -181,6 +182,9 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
     <div className="space-y-5">
       <datalist id="funcoes-list">
         {funcoes?.map((f) => <option key={f.id} value={f.nome} />)}
+      </datalist>
+      <datalist id="equipamentos-list">
+        {equipamentos?.map((e) => <option key={e.id} value={e.nome} />)}
       </datalist>
 
       <div className="flex items-center justify-between sticky top-0 bg-slate-900 py-2 z-10">
@@ -293,7 +297,7 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
         onChange={(recursos) => up({ recursos })}
         render={(r, set) => (
           <div className="grid grid-cols-3 gap-2">
-            <input placeholder="Equipamento" value={r.equipamento ?? ""} onChange={(ev) => set({ ...r, equipamento: ev.target.value })} className={inp} disabled={bloqueado} />
+            <input list="equipamentos-list" placeholder="Equipamento" value={r.equipamento ?? ""} onChange={(ev) => set({ ...r, equipamento: ev.target.value })} className={inp} disabled={bloqueado} />
             <input type="number" placeholder="Qtd" value={r.quantidade} onChange={(ev) => set({ ...r, quantidade: Number(ev.target.value) })} className={inp} disabled={bloqueado} />
             <input placeholder="Horas" value={r.horas ?? ""} onChange={(ev) => set({ ...r, horas: ev.target.value })} className={inp} disabled={bloqueado} />
           </div>

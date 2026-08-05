@@ -105,7 +105,15 @@ export type Dashboard = {
   paralisacoes: { motivo: string; ocorrencias: number; minutos: number }[];
   retrabalho: { causa: string; hh: number }[];
   curvaS: CurvaPonto[];
+  produtividade: Produtividade;
   rdos: number;
+};
+
+// ---- Produtividade (Sprint 8) ----
+export type Produtividade = {
+  hhDireto: number; hhIndireto: number; hhNaoClassificado: number;
+  pctDireto: number; pctIndireto: number;
+  porFuncao: { funcao: string; hh: number; pessoas: number }[];
 };
 
 // ---- Aprovacao publica por token (Sprint 5) ----
@@ -138,3 +146,10 @@ export type MedicaoCalc = {
   itens: MedicaoItemCalc[]; parcelas: MedicaoParcelaCalc[];
 };
 export type MedicaoLista = { id: string; numero: number; de: string; ate: string; valorPeriodo: number; medidoAcumulado: number; pctFisico: number; pctFinanceiro: number; status: string };
+
+// ---- Equipamentos / Documentos (Sprint 8) ----
+export type Equipamento = {
+  id: string; nome: string; tipo?: string | null; proprioLocado: string;
+  horimetro?: number | null; custoHora?: number | null; statusManutencao?: string | null;
+};
+export type Documento = { id: string; tipo: string; nome: string; versao?: string | null; tamanhoBytes: number; criadoEm: string; url: string };

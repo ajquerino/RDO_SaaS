@@ -23,6 +23,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<FaturamentoPlano> FaturamentoPlanos => Set<FaturamentoPlano>();
     public DbSet<FaturamentoEvento> FaturamentoEventos => Set<FaturamentoEvento>();
     public DbSet<Medicao> Medicoes => Set<Medicao>();
+    public DbSet<Equipamento> Equipamentos => Set<Equipamento>();
+    public DbSet<Documento> Documentos => Set<Documento>();
 
     public Guid? CurrentTenant => tenant.TenantId;
 
@@ -139,6 +141,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             e.HasIndex(x => x.TenantId);
             e.OwnsMany(x => x.Itens, o => { o.ToTable("medicao_itens"); o.HasKey(p => p.Id); o.WithOwner().HasForeignKey(p => p.MedicaoId); });
             e.OwnsMany(x => x.Parcelas, o => { o.ToTable("medicao_parcelas"); o.HasKey(p => p.Id); o.WithOwner().HasForeignKey(p => p.MedicaoId); });
+        });
+
+        // ---- Equipamentos / Documentos (Sprint 8) ----
+        b.Entity<Equipamento>(e =>
+        {
+            e.ToTable("equipamentos");
+            e.HasIndex(x => new { x.TenantId, x.Nome }).IsUnique();
+        });
+
+        b.Entity<Documento>(e =>
+        {
+            e.ToTable("documentos");
+            e.HasIndex(x => x.ObraId);
+            e.HasOne<Obra>().WithMany().HasForeignKey(x => x.ObraId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Filtro global de tenant + soft delete para toda BaseEntity.

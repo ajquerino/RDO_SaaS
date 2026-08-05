@@ -102,6 +102,45 @@ public class DashboardController(AppDbContext db) : ControllerBase
             .Select(g => new { Causa = g.Key, Hh = g.Sum(rt => rt.Pessoas * (rt.Horas ?? 0)) })
             .OrderByDescending(x => x.Hh).ToList();
 
+        // ---- Produtividade (Sprint 8): HH direto x indireto + efetivo por funcao ----
+        // Classifica cada função do efetivo pela Categoria do catálogo (Direta/Indireta).
+        var catFuncao = await db.Funcoes.Select(f => new { f.Nome, f.Categoria }).ToListAsync();
+        var catPorNome = catFuncao
+            .GroupBy(f => f.Nome.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Categoria);
+
+        decimal hhDireto = 0, hhIndireto = 0, hhNaoClass = 0;
+        var porFuncao = new Dictionary<string, (decimal Hh, int Pessoas)>();
+        foreach (var r in rdos)
+        {
+            var h = HorasTrabalhadas(r.Jornada, r.Data);
+            foreach (var e in r.Efetivo)
+            {
+                var hh = e.Quantidade * h;
+                var nome = string.IsNullOrWhiteSpace(e.Funcao) ? "(sem função)" : e.Funcao!.Trim();
+                var cat = e.Funcao is { } fn && catPorNome.TryGetValue(fn.Trim().ToLowerInvariant(), out var c) ? c : null;
+                if (cat == "Direta") hhDireto += hh;
+                else if (cat == "Indireta") hhIndireto += hh;
+                else hhNaoClass += hh;
+                var cur = porFuncao.GetValueOrDefault(nome);
+                porFuncao[nome] = (cur.Hh + hh, cur.Pessoas + e.Quantidade);
+            }
+        }
+        decimal hhClass = hhDireto + hhIndireto;
+        var produtividade = new
+        {
+            hhDireto = Math.Round(hhDireto, 1),
+            hhIndireto = Math.Round(hhIndireto, 1),
+            hhNaoClassificado = Math.Round(hhNaoClass, 1),
+            pctDireto = hhClass > 0 ? Math.Round(hhDireto / hhClass * 100, 1) : 0,
+            pctIndireto = hhClass > 0 ? Math.Round(hhIndireto / hhClass * 100, 1) : 0,
+            porFuncao = porFuncao.OrderByDescending(x => x.Value.Hh)
+                .Select(x => new { funcao = x.Key, hh = Math.Round(x.Value.Hh, 1), pessoas = x.Value.Pessoas })
+                .ToList()
+            // TODO: índices físicos de produtividade (kg/HH, t/HH, m²/HH) dependem de regra
+            // do usuário (base de medição por disciplina) — não implementar sem definição.
+        };
+
         // Farol (tempo x avanço)
         string farol = "cinza"; decimal? desvio = null;
         if (obra.DataInicio is { } di && obra.DataFim is { } df && df > di)
@@ -122,6 +161,7 @@ public class DashboardController(AppDbContext db) : ControllerBase
             paralisacoes,
             retrabalho,
             curvaS,
+            produtividade,
             rdos = rdos.Count
         });
     }

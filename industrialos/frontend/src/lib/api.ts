@@ -119,3 +119,22 @@ export type AprovacaoView = {
   retrabalho: { atividade?: string; pessoas: number; horas?: number | null; causa?: string }[];
   motivoRevisao?: string | null; revisadoPor?: string | null; aprovadoPor?: string | null; aprovadoEm?: string | null;
 };
+
+// ---- Medicao / Faturamento (Sprint 7) ----
+export type CondicaoPagamento = { id: string; nome: string; parcelas: string }; // parcelas = jsonb string [{dias,pct?}]
+export type FaturamentoEvento = {
+  id?: string; tipo: string; base: string; percentual?: number | null; valor?: number | null;
+  gatilho?: string | null; dataPrevista?: string | null; recorrencia?: string | null;
+  condicaoPagamentoId?: string | null; ordem: number; descricao?: string | null;
+};
+export type FaturamentoPlano = { id: string; nome: string; valorContrato: number; condicaoPagamentoId?: string | null };
+export type Faturamento = { plano: FaturamentoPlano | null; eventos: FaturamentoEvento[] };
+
+export type MedicaoItemCalc = { obraItemId: string; descricao: string; pctIni: number; pctFim: number; valor: number; medidoPeriodo: number; medidoAcum: number };
+export type MedicaoParcelaCalc = { dias: number; vencimento: string; valor: number; pct: number };
+export type MedicaoCalc = {
+  de: string; ate: string; valorContrato: number; medidoAcumulado: number; valorPeriodo: number;
+  pctFisico: number; pctFinanceiro: number; avancoHh: number;
+  itens: MedicaoItemCalc[]; parcelas: MedicaoParcelaCalc[];
+};
+export type MedicaoLista = { id: string; numero: number; de: string; ate: string; valorPeriodo: number; medidoAcumulado: number; pctFisico: number; pctFinanceiro: number; status: string };

@@ -19,6 +19,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<FuncaoMaoObra> Funcoes => Set<FuncaoMaoObra>();
     public DbSet<Rdo> Rdos => Set<Rdo>();
     public DbSet<RdoMidia> RdoMidias => Set<RdoMidia>();
+    public DbSet<CondicaoPagamento> CondicoesPagamento => Set<CondicaoPagamento>();
+    public DbSet<FaturamentoPlano> FaturamentoPlanos => Set<FaturamentoPlano>();
+    public DbSet<FaturamentoEvento> FaturamentoEventos => Set<FaturamentoEvento>();
+    public DbSet<Medicao> Medicoes => Set<Medicao>();
 
     public Guid? CurrentTenant => tenant.TenantId;
 
@@ -104,6 +108,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             e.ToTable("rdo_midia");
             e.HasIndex(x => x.RdoId);
             e.HasOne<Rdo>().WithMany().HasForeignKey(x => x.RdoId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ---- Faturamento / Medicao (Sprint 7) ----
+        b.Entity<CondicaoPagamento>(e =>
+        {
+            e.ToTable("condicoes_pagamento");
+            e.Property(x => x.Parcelas).HasColumnType("jsonb");
+            e.HasIndex(x => x.TenantId);
+        });
+
+        b.Entity<FaturamentoPlano>(e =>
+        {
+            e.ToTable("faturamento_planos");
+            e.HasIndex(x => x.ObraId);
+            e.HasIndex(x => x.TenantId);
+        });
+
+        b.Entity<FaturamentoEvento>(e =>
+        {
+            e.ToTable("faturamento_eventos");
+            e.HasIndex(x => x.FaturamentoPlanoId);
+            e.HasIndex(x => x.TenantId);
+        });
+
+        b.Entity<Medicao>(e =>
+        {
+            e.ToTable("medicoes");
+            e.HasIndex(x => new { x.ObraId, x.Numero }).IsUnique();
+            e.HasIndex(x => x.TenantId);
+            e.OwnsMany(x => x.Itens, o => { o.ToTable("medicao_itens"); o.HasKey(p => p.Id); o.WithOwner().HasForeignKey(p => p.MedicaoId); });
+            e.OwnsMany(x => x.Parcelas, o => { o.ToTable("medicao_parcelas"); o.HasKey(p => p.Id); o.WithOwner().HasForeignKey(p => p.MedicaoId); });
         });
 
         // Filtro global de tenant + soft delete para toda BaseEntity.

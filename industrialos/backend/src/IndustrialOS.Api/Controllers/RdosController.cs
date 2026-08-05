@@ -79,6 +79,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         {
             rdo.Id, rdo.ObraId, rdo.Numero, rdo.Revisao, rdo.Data, rdo.DiaSemana, rdo.Turno,
             Status = rdo.Status.ToString(), rdo.Ocorrencias,
+            rdo.TokenAprovacao, rdo.MotivoRevisao, rdo.RevisadoPor, rdo.RevisadoEm, rdo.AprovadoPor, rdo.AprovadoEm,
             Clima = Json(rdo.Clima), Jornada = Json(rdo.Jornada), Dificuldades = Json(rdo.Dificuldades),
             ProximoDia = Json(rdo.ProximoDia), Planejamento = Json(rdo.Planejamento), Seguranca = Json(rdo.Seguranca),
             Assinaturas = Json(rdo.Assinaturas),
@@ -113,12 +114,20 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
         if (rdo.Status == RdoStatus.Aprovado) return Conflict(new { erro = "Ja aprovado." });
 
+        // Reenvio apos revisao solicitada pelo fiscal: incrementa a revisao e limpa o motivo.
+        if (rdo.Status == RdoStatus.RevisaoSolicitada || rdo.Status == RdoStatus.EmRevisao)
+        {
+            rdo.Revisao += 1;
+            rdo.MotivoRevisao = null;
+            rdo.RevisadoPor = null;
+            rdo.RevisadoEm = null;
+        }
+
         rdo.Status = RdoStatus.Enviado;
         rdo.EnviadoPor = UsuarioId;
         rdo.EnviadoEm = DateTime.UtcNow;
         rdo.TokenAprovacao = Guid.NewGuid().ToString("N");
         await db.SaveChangesAsync();
-        // PDF (QuestPDF) e snapshot de avanco entram nos Sprints seguintes.
         return Ok(new { rdo.Id, Status = rdo.Status.ToString(), rdo.TokenAprovacao });
     }
 
@@ -128,69 +137,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
         if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
 
-        var obra = await db.Obras.FindAsync(rdo.ObraId);
-        var cliente = obra?.ClienteId is { } cid ? await db.Clientes.FindAsync(cid) : null;
-        var resp = rdo.ResponsavelUsuarioId is { } uid ? (await db.Usuarios.FindAsync(uid))?.Nome : null;
-        var itens = await db.ObraItens.Where(i => i.ObraId == rdo.ObraId).ToDictionaryAsync(i => i.Id);
-
-        var fotos = await db.RdoMidias.CountAsync(m => m.RdoId == id);
-
-        var clima = Doc(rdo.Clima); var jorn = Doc(rdo.Jornada); var seg = Doc(rdo.Seguranca);
-        var prox = Doc(rdo.ProximoDia); var plan = Doc(rdo.Planejamento); var dif = Doc(rdo.Dificuldades);
-
-        string? J(string k) => Str(jorn, k);
-        string[] condicoes = clima.TryGetProperty("condicoes", out var cc) && cc.ValueKind == JsonValueKind.Array
-            ? cc.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x != "").ToArray() : [];
-        int? temp = clima.TryGetProperty("temperatura", out var tp) && tp.ValueKind == JsonValueKind.Number ? tp.GetInt32() : null;
-
-        // Horas / hora extra (cálculo no backend)
-        HorasModel? horas = null;
-        if (JornadaCalculo.Calcular(J("inicio"), J("almoco"), J("retorno"), J("termino"), Bool(jorn, "feriado"), rdo.Data) is { } h)
-            horas = new HorasModel(h.DiaTipo, JornadaCalculo.Fmt(h.TrabalhadoMin),
-                h.ExtraUtilMin > 0 ? JornadaCalculo.Fmt(h.ExtraUtilMin) : null,
-                h.Extra100Min > 0 ? JornadaCalculo.Fmt(h.Extra100Min) : null,
-                h.Extra150Min > 0 ? JornadaCalculo.Fmt(h.Extra150Min) : null);
-
-        var pendencias = prox.TryGetProperty("pendencias", out var pe) && pe.ValueKind == JsonValueKind.Array
-            ? pe.EnumerateArray().Select(x => new PendenciaRow(Str(x, "descricao"), Str(x, "responsavel"), Str(x, "prazo"), Str(x, "status"))).ToList()
-            : [];
-
-        // assinaturas (base64 -> bytes)
-        var assDoc = Doc(rdo.Assinaturas);
-        AssinaturaModel? Ass(string papel, string label)
-        {
-            if (assDoc.ValueKind != JsonValueKind.Object || !assDoc.TryGetProperty(papel, out var a) || a.ValueKind != JsonValueKind.Object) return null;
-            var nome = Str(a, "nome");
-            byte[]? img = null;
-            var imgStr = Str(a, "img");
-            if (!string.IsNullOrEmpty(imgStr))
-            {
-                var b64 = imgStr.Contains(',') ? imgStr[(imgStr.IndexOf(',') + 1)..] : imgStr;
-                try { img = Convert.FromBase64String(b64); } catch { /* ignora imagem inválida */ }
-            }
-            return nome is null && img is null ? null : new AssinaturaModel(label, nome, img);
-        }
-        var assinaturas = new[] { Ass("encarregado", "Encarregado"), Ass("fiscal", "Fiscal"), Ass("supervisor", "Supervisor") }
-            .Where(x => x is not null).Select(x => x!).ToList();
-
-        var model = new RdoPdfModel(
-            obra?.Nome ?? "Obra", obra?.Contrato, cliente?.Nome, obra?.Local,
-            rdo.Numero, rdo.Revisao, rdo.Data.ToString("dd/MM/yyyy"), rdo.DiaSemana, rdo.Turno, resp, rdo.Status.ToString(),
-            condicoes, temp, J("inicio"), J("almoco"), J("retorno"), J("termino"), horas,
-            rdo.Efetivo.Select(e => new EfetivoRow(e.Funcao, e.Quantidade, e.HoraExtra)).ToList(),
-            rdo.Paralisacoes.Select(p => new ParalisacaoRow(p.Inicio, p.Fim, p.Motivo, p.Descricao)).ToList(),
-            rdo.Recursos.Select(r => new RecursoRow(r.Equipamento, r.Quantidade, r.Horas)).ToList(),
-            rdo.Servicos.Select(s => new ServicoRow(s.Atividade,
-                s.ObraItemId is { } oid && itens.TryGetValue(oid, out var it) ? it.Descricao : null,
-                s.Status, s.QtdExec, s.Unidade,
-                (int)Math.Round(AvancoCalculo.PctItem(s, s.ObraItemId is { } o && itens.TryGetValue(o, out var it2) ? it2 : null) * 100))).ToList(),
-            rdo.Retrabalho.Select(rt => new RetrabalhoRow(rt.Atividade, rt.Pessoas, rt.Horas, rt.Causa, rt.AcaoCorretiva)).ToList(),
-            pendencias,
-            new SegurancaModel(Bool(seg, "dds"), Bool(seg, "apr"), Bool(seg, "pt"), Bool(seg, "areaIsolada"), Bool(seg, "epis"), Bool(seg, "ferramentas"), Str(seg, "observacoes")),
-            new ProximoDiaModel(Str(prox, "maoObra"), Str(prox, "equipamentos"), Str(prox, "materiais"), Str(prox, "ferramentas")),
-            new PlanejamentoModel(Str(plan, "servicos"), Str(plan, "prioridades"), Str(plan, "areas")),
-            Str(dif, "descricao"), rdo.Ocorrencias, fotos, assinaturas);
-
+        var model = await RdoPdfFactory.BuildAsync(db, rdo);
         return File(pdf.Gerar(model), "application/pdf", $"RDO-{rdo.Numero}.pdf");
     }
 
@@ -245,9 +192,6 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
 
     // ---- helpers ----
     private static JsonElement Json(string raw) => JsonSerializer.Deserialize<JsonElement>(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
-    private static JsonElement Doc(string raw) => JsonSerializer.Deserialize<JsonElement>(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
-    private static string? Str(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-    private static bool Bool(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;
     private static string Raw(JsonElement? e, string fallback) => e is { } el ? el.GetRawText() : fallback;
 
     private static void Aplicar(Rdo rdo, RdoUpsert d)

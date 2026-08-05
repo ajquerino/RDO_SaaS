@@ -46,6 +46,25 @@ export async function apiBlob(path: string): Promise<Blob> {
   return res.blob();
 }
 
+/** fetch para as rotas publicas (aprovacao por token) — nunca envia Bearer. */
+export async function apiPublico<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+  });
+  if (res.status === 204) return undefined as T;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.erro ?? `Erro ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** URL absoluta para abrir um recurso publico em nova aba (ex.: PDF da aprovacao). */
+export function urlPublica(path: string) {
+  return `${API}${path}`;
+}
+
 // ---- tipos de dominio ----
 export type Cliente = { id: string; nome: string; cnpj?: string; contato?: string; endereco?: string };
 export type ObraLista = { id: string; nome: string; contrato?: string; status: string; dataInicio?: string; dataFim?: string; itens: number };
@@ -71,4 +90,32 @@ export type RdoDetalhe = {
   id: string; obraId: string; numero: number; revisao: number; data: string; diaSemana?: string; turno?: string;
   status: string; ocorrencias?: string; clima: any; jornada: any; dificuldades: any; proximoDia: any; planejamento: any; seguranca: any; assinaturas: any;
   efetivo: Efetivo[]; paralisacoes: Paralisacao[]; recursos: Recurso[]; servicos: Servico[]; retrabalho: Retrabalho[];
+  tokenAprovacao?: string | null; motivoRevisao?: string | null; revisadoPor?: string | null; revisadoEm?: string | null;
+  aprovadoPor?: string | null; aprovadoEm?: string | null;
+};
+
+// ---- Dashboard (Sprint 6) ----
+export type DashItem = { descricao: string; hhPrevisto?: number | null; qtdPrevista?: number | null; pct: number };
+export type CurvaPonto = { data: string; previstoPct: number; realizadoPct: number };
+export type Dashboard = {
+  obra: { nome: string; contrato?: string; dataInicio?: string; dataFim?: string; status: string };
+  avanco: { pct: number; baseAvanco: string; itens: DashItem[] };
+  hh: { previsto: number; realizado: number; efetivoMedio: number };
+  farol: { cor: string; desvio?: number | null };
+  paralisacoes: { motivo: string; ocorrencias: number; minutos: number }[];
+  retrabalho: { causa: string; hh: number }[];
+  curvaS: CurvaPonto[];
+  rdos: number;
+};
+
+// ---- Aprovacao publica por token (Sprint 5) ----
+export type AprovacaoView = {
+  numero: number; revisao: number; data: string; diaSemana?: string; turno?: string;
+  status: string; ocorrencias?: string; responsavel?: string;
+  obra: { nome?: string; contrato?: string; local?: string; cliente?: string };
+  efetivo: { funcao?: string; quantidade: number; horaExtra?: string }[];
+  paralisacoes: { inicio?: string; fim?: string; motivo?: string; descricao?: string }[];
+  servicos: { atividade?: string; item?: string; status?: string; qtdExec?: number | null; unidade?: string; pct: number }[];
+  retrabalho: { atividade?: string; pessoas: number; horas?: number | null; causa?: string }[];
+  motivoRevisao?: string | null; revisadoPor?: string | null; aprovadoPor?: string | null; aprovadoEm?: string | null;
 };

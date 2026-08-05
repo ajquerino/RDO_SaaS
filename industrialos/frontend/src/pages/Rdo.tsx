@@ -72,6 +72,10 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const [form, setForm] = useState<Form | null>(null);
   const [numero, setNumero] = useState<number>(0);
   const [status, setStatus] = useState<string>("Rascunho");
+  const [token, setToken] = useState<string | null>(null);
+  const [motivoRevisao, setMotivoRevisao] = useState<string | null>(null);
+  const [aprovadoPor, setAprovadoPor] = useState<string | null>(null);
+  const [linkCopiado, setLinkCopiado] = useState(false);
   const [salvo, setSalvo] = useState<"" | "salvando" | "salvo" | "erro">("");
   const [buscandoClima, setBuscandoClima] = useState(false);
   const primeiraCarga = useRef(true);
@@ -83,6 +87,9 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   useEffect(() => {
     api<RdoDetalhe>(`/api/v1/rdos/${rdoId}`).then((r) => {
       setNumero(r.numero); setStatus(r.status);
+      setToken(r.tokenAprovacao ?? null);
+      setMotivoRevisao(r.motivoRevisao ?? null);
+      setAprovadoPor(r.aprovadoPor ?? null);
       setForm({
         data: r.data, turno: r.turno ?? "", ocorrencias: r.ocorrencias ?? "",
         clima: { condicoes: r.clima?.condicoes ?? [], temperatura: r.clima?.temperatura },
@@ -132,9 +139,18 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const bloqueado = status === "Aprovado";
 
   async function finalizar() {
-    await api(`/api/v1/rdos/${rdoId}/finalizar`, { method: "POST" });
-    setStatus("Enviado");
+    const r = await api<{ status: string; tokenAprovacao?: string }>(`/api/v1/rdos/${rdoId}/finalizar`, { method: "POST" });
+    setStatus(r.status);
+    setToken(r.tokenAprovacao ?? null);
+    setMotivoRevisao(null);
     qc.invalidateQueries({ queryKey: ["rdos", obraId] });
+  }
+
+  const linkAprovacao = token ? `${window.location.origin}/aprovacao/${token}` : null;
+  async function copiarLink() {
+    if (!linkAprovacao) return;
+    try { await navigator.clipboard.writeText(linkAprovacao); setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000); }
+    catch { /* clipboard indisponivel — o usuario copia manualmente do campo */ }
   }
 
   async function abrirPdf() {
@@ -406,12 +422,41 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
         </div>
       </Secao>
 
-      {!bloqueado && status === "Rascunho" && (
+      {/* Revisao solicitada pelo fiscal — a equipe corrige e reenvia */}
+      {status === "RevisaoSolicitada" && motivoRevisao && (
+        <div className="rounded-xl border border-amber-700 bg-amber-900/40 p-4 text-amber-200">
+          <p className="font-semibold">Revisão solicitada pelo fiscal</p>
+          <p className="text-sm mt-0.5 whitespace-pre-wrap">{motivoRevisao}</p>
+        </div>
+      )}
+
+      {status === "Aprovado" && (
+        <div className="rounded-xl border border-emerald-700 bg-emerald-900/40 p-4 text-emerald-200">
+          <p className="font-semibold">RDO aprovado ✓</p>
+          {aprovadoPor && <p className="text-sm mt-0.5">Aprovado por {aprovadoPor}.</p>}
+        </div>
+      )}
+
+      {/* Link de aprovacao para enviar ao fiscal (status Enviado, com token vigente) */}
+      {status === "Enviado" && linkAprovacao && (
+        <div className="rounded-xl bg-slate-800 p-4 space-y-2">
+          <p className="text-sm font-semibold">Link de aprovação do fiscal</p>
+          <p className="text-xs text-slate-400">Envie este link ao fiscal do cliente. Ele aprova ou pede revisão sem precisar de login.</p>
+          <div className="flex gap-2">
+            <input readOnly value={linkAprovacao} onFocus={(e) => e.currentTarget.select()} className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs" />
+            <button onClick={copiarLink} className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold hover:bg-sky-500">
+              {linkCopiado ? "Copiado ✓" : "Copiar"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!bloqueado && (status === "Rascunho" || status === "RevisaoSolicitada") && (
         <button onClick={finalizar} className="w-full rounded-lg bg-emerald-600 py-3 font-semibold hover:bg-emerald-500">
-          Finalizar e enviar
+          {status === "RevisaoSolicitada" ? "Reenviar para aprovação" : "Finalizar e enviar"}
         </button>
       )}
-      {status !== "Rascunho" && <p className="text-center text-sm text-slate-400">RDO {status.toLowerCase()}.</p>}
+      {status === "Enviado" && <p className="text-center text-sm text-slate-400">Aguardando aprovação do fiscal.</p>}
     </div>
   );
 }

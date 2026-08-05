@@ -1,0 +1,28 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\npm.cmd",
+      "runtimeArgs": [
+        "--prefix",
+        "C:\\Users\\Pontual\\OneDrive - Pontual Montagens\\Área de Trabalho\\PROGRAMA RDO\\industrialos\\frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:\\Program Files\\dotnet\\dotnet.exe",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "C:\\Users\\Pontual\\OneDrive - Pontual Montagens\\Área de Trabalho\\PROGRAMA RDO\\industrialos\\backend\\src\\IndustrialOS.Api",
+        "--urls",
+        "http://localhost:8080"
+      ],
+      "port": 8080
+    }
+  ]
+}

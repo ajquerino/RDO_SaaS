@@ -1,0 +1,11 @@
+# .NET
+bin/
+obj/
+# Node
+node_modules/
+dist/
+# Env / secrets
+.env
+*.user
+appsettings.*.Local.json
+appsettings.Local.json

@@ -50,6 +50,8 @@ const STATUS_SERV = ["Nao iniciado", "Em andamento", "Em espera", "Concluido"];
 type Seguranca = { dds: boolean; apr: boolean; pt: boolean; areaIsolada: boolean; epis: boolean; ferramentas: boolean; observacoes: string };
 type ProximoDia = { maoObra: string; equipamentos: string; materiais: string; ferramentas: string; pendencias: Pendencia[] };
 type Planejamento = { servicos: string; prioridades: string; areas: string; observacoes: string };
+type Assinatura = { nome?: string; img?: string };
+type Assinaturas = { encarregado: Assinatura; fiscal: Assinatura; supervisor?: Assinatura };
 
 type Form = {
   data: string; turno: string; ocorrencias: string;
@@ -58,6 +60,7 @@ type Form = {
   efetivo: Efetivo[]; paralisacoes: Paralisacao[]; recursos: Recurso[]; servicos: Servico[];
   retrabalho: Retrabalho[]; dificuldades: { descricao: string };
   proximoDia: ProximoDia; planejamento: Planejamento; seguranca: Seguranca;
+  assinaturas: Assinaturas;
 };
 
 const SEG_VAZIA: Seguranca = { dds: false, apr: false, pt: false, areaIsolada: false, epis: false, ferramentas: false, observacoes: "" };
@@ -90,6 +93,11 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
         proximoDia: { ...PROX_VAZIO, ...(r.proximoDia ?? {}), pendencias: r.proximoDia?.pendencias ?? [] },
         planejamento: { ...PLAN_VAZIO, ...(r.planejamento ?? {}) },
         seguranca: { ...SEG_VAZIA, ...(r.seguranca ?? {}) },
+        assinaturas: {
+          encarregado: r.assinaturas?.encarregado ?? {},
+          fiscal: r.assinaturas?.fiscal ?? {},
+          supervisor: r.assinaturas?.supervisor,
+        },
       });
     });
   }, [rdoId]);
@@ -105,7 +113,7 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
           data: form.data, turno: form.turno, ocorrencias: form.ocorrencias,
           clima: form.clima, jornada: form.jornada,
           dificuldades: form.dificuldades, proximoDia: form.proximoDia,
-          planejamento: form.planejamento, seguranca: form.seguranca,
+          planejamento: form.planejamento, seguranca: form.seguranca, assinaturas: form.assinaturas,
           efetivo: form.efetivo, paralisacoes: form.paralisacoes, recursos: form.recursos,
           servicos: form.servicos, retrabalho: form.retrabalho,
         }) });
@@ -381,6 +389,23 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
 
       <SecaoFotos rdoId={rdoId} disabled={bloqueado} />
 
+      {/* Assinaturas */}
+      <Secao titulo="Assinaturas">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SignaturePad label="Encarregado" value={form.assinaturas.encarregado} disabled={bloqueado}
+            onChange={(a) => up({ assinaturas: { ...form.assinaturas, encarregado: a } })} />
+          <SignaturePad label="Fiscal" value={form.assinaturas.fiscal} disabled={bloqueado}
+            onChange={(a) => up({ assinaturas: { ...form.assinaturas, fiscal: a } })} />
+          {form.assinaturas.supervisor !== undefined ? (
+            <SignaturePad label="Supervisor" value={form.assinaturas.supervisor} disabled={bloqueado}
+              onChange={(a) => up({ assinaturas: { ...form.assinaturas, supervisor: a } })} />
+          ) : !bloqueado ? (
+            <button type="button" onClick={() => up({ assinaturas: { ...form.assinaturas, supervisor: {} } })}
+              className="rounded-lg bg-slate-700 px-3 py-2 text-sm self-start h-fit">+ Supervisor</button>
+          ) : null}
+        </div>
+      </Secao>
+
       {!bloqueado && status === "Rascunho" && (
         <button onClick={finalizar} className="w-full rounded-lg bg-emerald-600 py-3 font-semibold hover:bg-emerald-500">
           Finalizar e enviar
@@ -438,6 +463,55 @@ function SecaoFotos({ rdoId, disabled }: { rdoId: string; disabled?: boolean }) 
       </div>
       {fotos?.length === 0 && <p className="text-slate-500 text-sm">Nenhuma foto.</p>}
     </Secao>
+  );
+}
+
+function SignaturePad({ label, value, onChange, disabled }: { label: string; value: Assinatura; onChange: (a: Assinatura) => void; disabled?: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext("2d")!;
+    ctx.lineWidth = 2; ctx.lineCap = "round"; ctx.strokeStyle = "#e2e8f0";
+    if (value.img && !loaded.current) {
+      loaded.current = true;
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height);
+      img.src = value.img;
+    }
+  }, [value.img]);
+
+  const pos = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const c = canvasRef.current!; const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height) };
+  };
+  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (disabled) return; drawing.current = true;
+    const ctx = canvasRef.current!.getContext("2d")!; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+  };
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current) return; const ctx = canvasRef.current!.getContext("2d")!; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke();
+  };
+  const end = () => {
+    if (!drawing.current) return; drawing.current = false;
+    onChange({ ...value, img: canvasRef.current!.toDataURL("image/png") });
+  };
+  const limpar = () => {
+    const c = canvasRef.current!; c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    onChange({ ...value, img: undefined });
+  };
+
+  return (
+    <div className="space-y-1">
+      <input placeholder={`Nome — ${label}`} value={value.nome ?? ""} disabled={disabled}
+        onChange={(e) => onChange({ ...value, nome: e.target.value })} className={inp} />
+      <canvas ref={canvasRef} width={300} height={110}
+        onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerLeave={end}
+        className="w-full rounded-lg bg-slate-900 border border-slate-700 touch-none" style={{ height: 110 }} />
+      {!disabled && <button type="button" onClick={limpar} className="text-xs text-slate-400">Limpar {label.toLowerCase()}</button>}
+    </div>
   );
 }
 

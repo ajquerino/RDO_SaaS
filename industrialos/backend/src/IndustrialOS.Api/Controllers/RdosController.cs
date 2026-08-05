@@ -155,6 +155,24 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
             ? pe.EnumerateArray().Select(x => new PendenciaRow(Str(x, "descricao"), Str(x, "responsavel"), Str(x, "prazo"), Str(x, "status"))).ToList()
             : [];
 
+        // assinaturas (base64 -> bytes)
+        var assDoc = Doc(rdo.Assinaturas);
+        AssinaturaModel? Ass(string papel, string label)
+        {
+            if (assDoc.ValueKind != JsonValueKind.Object || !assDoc.TryGetProperty(papel, out var a) || a.ValueKind != JsonValueKind.Object) return null;
+            var nome = Str(a, "nome");
+            byte[]? img = null;
+            var imgStr = Str(a, "img");
+            if (!string.IsNullOrEmpty(imgStr))
+            {
+                var b64 = imgStr.Contains(',') ? imgStr[(imgStr.IndexOf(',') + 1)..] : imgStr;
+                try { img = Convert.FromBase64String(b64); } catch { /* ignora imagem inválida */ }
+            }
+            return nome is null && img is null ? null : new AssinaturaModel(label, nome, img);
+        }
+        var assinaturas = new[] { Ass("encarregado", "Encarregado"), Ass("fiscal", "Fiscal"), Ass("supervisor", "Supervisor") }
+            .Where(x => x is not null).Select(x => x!).ToList();
+
         var model = new RdoPdfModel(
             obra?.Nome ?? "Obra", obra?.Contrato, cliente?.Nome, obra?.Local,
             rdo.Numero, rdo.Revisao, rdo.Data.ToString("dd/MM/yyyy"), rdo.DiaSemana, rdo.Turno, resp, rdo.Status.ToString(),
@@ -171,7 +189,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
             new SegurancaModel(Bool(seg, "dds"), Bool(seg, "apr"), Bool(seg, "pt"), Bool(seg, "areaIsolada"), Bool(seg, "epis"), Bool(seg, "ferramentas"), Str(seg, "observacoes")),
             new ProximoDiaModel(Str(prox, "maoObra"), Str(prox, "equipamentos"), Str(prox, "materiais"), Str(prox, "ferramentas")),
             new PlanejamentoModel(Str(plan, "servicos"), Str(plan, "prioridades"), Str(plan, "areas")),
-            Str(dif, "descricao"), rdo.Ocorrencias, fotos);
+            Str(dif, "descricao"), rdo.Ocorrencias, fotos, assinaturas);
 
         return File(pdf.Gerar(model), "application/pdf", $"RDO-{rdo.Numero}.pdf");
     }

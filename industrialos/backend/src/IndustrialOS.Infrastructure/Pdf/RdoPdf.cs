@@ -162,6 +162,29 @@ public class RdoPdf : IRdoPdf
 
             if (m.Fotos > 0)
                 col.Item().Text($"📎 {m.Fotos} foto(s)/vídeo(s) anexado(s) ao RDO.").FontSize(8).FontColor(Colors.Grey.Darken1);
+
+            // Assinaturas
+            if (m.Assinaturas.Count > 0)
+            {
+                col.Item().PaddingTop(6).Text("Assinaturas").SemiBold().FontColor(Azul);
+                col.Item().Row(r =>
+                {
+                    foreach (var a in m.Assinaturas)
+                    {
+                        r.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten1).Padding(4).Column(x =>
+                        {
+                            if (a.Imagem is { } img)
+                                x.Item().Height(45).Image(img).FitArea();
+                            else
+                                x.Item().Height(45);
+                            x.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Medium);
+                            x.Item().AlignCenter().Text(a.Nome ?? "—").FontSize(8);
+                            x.Item().AlignCenter().Text(a.Papel).FontSize(7).FontColor(Colors.Grey.Darken1);
+                        });
+                        r.ConstantItem(8);
+                    }
+                });
+            }
         });
     }
 

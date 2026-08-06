@@ -4,13 +4,16 @@ import Obras from "./Obras";
 import Clientes from "./Clientes";
 import Usuarios from "./Usuarios";
 import Equipamentos from "./Equipamentos";
+import Auditoria from "./Auditoria";
+import Planos from "./Planos";
 
-type Aba = "obras" | "clientes" | "equipamentos" | "usuarios";
+type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria" | "planos";
 
 export default function Home() {
   const { usuario, logout } = useAuth();
   const gereObras = podeGerirObras(usuario?.funcao);
   const gereUsuarios = podeGerirUsuarios(usuario?.funcao);
+  const ehAdmin = usuario?.funcao === "Admin";
   const [aba, setAba] = useState<Aba>("obras");
 
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
@@ -18,6 +21,8 @@ export default function Home() {
     { id: "clientes", rotulo: "Clientes", visivel: gereObras },
     { id: "equipamentos", rotulo: "Equipamentos", visivel: gereObras },
     { id: "usuarios", rotulo: "Usuários", visivel: gereUsuarios },
+    { id: "auditoria", rotulo: "Auditoria", visivel: ehAdmin },
+    { id: "planos", rotulo: "Planos", visivel: ehAdmin },
   ];
 
   return (
@@ -47,6 +52,8 @@ export default function Home() {
         {aba === "clientes" && gereObras && <Clientes />}
         {aba === "equipamentos" && gereObras && <Equipamentos />}
         {aba === "usuarios" && gereUsuarios && <Usuarios />}
+        {aba === "auditoria" && ehAdmin && <Auditoria />}
+        {aba === "planos" && ehAdmin && <Planos />}
       </section>
     </main>
   );

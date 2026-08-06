@@ -1,17 +1,19 @@
 using System.Security.Claims;
 using System.Text.Json;
+using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace IndustrialOS.Api.Controllers;
 
 [ApiController]
 [Route("api/v1")]
 [Authorize]
-public class DashboardController(AppDbContext db) : ControllerBase
+public class DashboardController(AppDbContext db, IMemoryCache cache) : ControllerBase
 {
     private bool VeTodasObras => User.IsInRole("Gestor") || User.IsInRole("Admin") || User.IsInRole("Planejador");
     private Guid UsuarioId => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"), out var id) ? id : Guid.Empty;
@@ -29,6 +31,18 @@ public class DashboardController(AppDbContext db) : ControllerBase
         var obra = await db.Obras.FindAsync(obraId);
         if (obra is null || !await PodeVerObra(obraId)) return NotFound();
 
+        // Cache por obra (~60s): o dashboard recomputa muitos RDOs/itens. A autorização
+        // acima roda sempre; só o cálculo é memorizado. (obraId é único global → chave segura.)
+        var resultado = await cache.GetOrCreateAsync($"dashboard:{obraId}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
+            return await Montar(obraId, obra);
+        });
+        return Ok(resultado);
+    }
+
+    private async Task<object> Montar(Guid obraId, Obra obra)
+    {
         var itens = await db.ObraItens.Where(i => i.ObraId == obraId).ToListAsync();
         var rdos = await db.Rdos.Where(r => r.ObraId == obraId).ToListAsync();
 
@@ -152,7 +166,7 @@ public class DashboardController(AppDbContext db) : ControllerBase
             farol = avancoPct >= 1 || desvio <= 10 ? "verde" : desvio <= 25 && !prazoEstourou ? "amarelo" : "vermelho";
         }
 
-        return Ok(new
+        return new
         {
             obra = new { obra.Nome, obra.Contrato, obra.DataInicio, obra.DataFim, obra.Status },
             avanco = new { pct = Math.Round(avancoPct * 100, 1), baseAvanco, itens = itensAvanco },
@@ -163,7 +177,7 @@ public class DashboardController(AppDbContext db) : ControllerBase
             curvaS,
             produtividade,
             rdos = rdos.Count
-        });
+        };
     }
 
     // ---- helpers ----

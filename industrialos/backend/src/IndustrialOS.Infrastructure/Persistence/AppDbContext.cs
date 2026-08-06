@@ -3,11 +3,12 @@ using IndustrialOS.Domain.Common;
 using IndustrialOS.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
+using System.Text.Json;
 
 namespace IndustrialOS.Infrastructure.Persistence;
 
 /// <summary>DbContext multi-tenant: Global Query Filter aplica tenant_id + soft delete.</summary>
-public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext tenant) : DbContext(options)
+public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext tenant, IUsuarioAtual usuario) : DbContext(options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Empresa> Empresas => Set<Empresa>();
@@ -25,6 +26,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<Medicao> Medicoes => Set<Medicao>();
     public DbSet<Equipamento> Equipamentos => Set<Equipamento>();
     public DbSet<Documento> Documentos => Set<Documento>();
+    public DbSet<Auditoria> Auditorias => Set<Auditoria>();
+    public DbSet<Plano> Planos => Set<Plano>();
 
     public Guid? CurrentTenant => tenant.TenantId;
 
@@ -157,6 +160,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             e.HasOne<Obra>().WithMany().HasForeignKey(x => x.ObraId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        // ---- Auditoria / Planos (Sprint 9) — globais, sem filtro de tenant (não são BaseEntity) ----
+        b.Entity<Auditoria>(e =>
+        {
+            e.ToTable("auditoria");
+            e.Property(x => x.Detalhe).HasColumnType("jsonb");
+            e.HasIndex(x => x.CriadoEm);
+            e.HasIndex(x => x.Entidade);
+            e.HasIndex(x => x.TenantId);
+        });
+
+        b.Entity<Plano>(e => e.ToTable("planos"));
+
         // Filtro global de tenant + soft delete para toda BaseEntity.
         foreach (var et in b.Model.GetEntityTypes()
                      .Where(t => typeof(BaseEntity).IsAssignableFrom(t.ClrType)))
@@ -175,11 +190,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public override int SaveChanges()
     {
         Stamp();
+        var audits = CapturarAuditoria();
+        if (audits.Count > 0) Auditorias.AddRange(audits);
         return base.SaveChanges();
     }
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         Stamp();
+        var audits = CapturarAuditoria();
+        if (audits.Count > 0) Auditorias.AddRange(audits);
         return base.SaveChangesAsync(ct);
     }
 
@@ -191,5 +210,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
                 e.Entity.TenantId = t;
             if (e.State == EntityState.Modified) e.Entity.AtualizadoEm = DateTime.UtcNow;
         }
+    }
+
+    // Entidades de negócio principais auditadas (não inclui Auditoria/Plano, evitando loop).
+    private static readonly HashSet<string> TiposAuditados =
+        [nameof(Obra), nameof(Cliente), nameof(Usuario), nameof(Rdo), nameof(Medicao), nameof(Equipamento), nameof(Documento)];
+    private static readonly HashSet<string> CamposSensiveis =
+        new(StringComparer.OrdinalIgnoreCase) { "SenhaHash", "TokenAprovacao", "R2Key" };
+
+    /// <summary>Gera os registros de auditoria (quem/o quê/quando) para inserts/updates/deletes.
+    /// Detalhe guarda só os NOMES dos campos alterados — nunca valores sensíveis.</summary>
+    private List<Auditoria> CapturarAuditoria()
+    {
+        var lista = new List<Auditoria>();
+        foreach (var e in ChangeTracker.Entries())
+        {
+            if (!TiposAuditados.Contains(e.Entity.GetType().Name)) continue;
+            if (e.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted)) continue;
+
+            string acao;
+            string detalhe = "{}";
+            if (e.State == EntityState.Added) acao = "create";
+            else if (e.State == EntityState.Deleted) acao = "delete";
+            else
+            {
+                var del = e.Metadata.FindProperty(nameof(BaseEntity.DeletadoEm)) is not null ? e.Property(nameof(BaseEntity.DeletadoEm)) : null;
+                var softDelete = del is { IsModified: true, OriginalValue: null } && del.CurrentValue is not null;
+                acao = softDelete ? "delete" : "update";
+                var campos = e.Properties
+                    .Where(p => p.IsModified && !CamposSensiveis.Contains(p.Metadata.Name))
+                    .Select(p => p.Metadata.Name).ToList();
+                if (campos.Count > 0) detalhe = JsonSerializer.Serialize(new { campos });
+            }
+
+            Guid? entidadeId = e.Metadata.FindProperty("Id") is not null && e.Property("Id").CurrentValue is Guid g ? g : null;
+            lista.Add(new Auditoria
+            {
+                TenantId = tenant.TenantId,
+                UsuarioId = usuario.UsuarioId,
+                Acao = acao,
+                Entidade = e.Entity.GetType().Name,
+                EntidadeId = entidadeId,
+                Detalhe = detalhe,
+            });
+        }
+        return lista;
     }
 }

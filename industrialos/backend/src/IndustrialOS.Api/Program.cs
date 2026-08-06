@@ -1,11 +1,14 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using IndustrialOS.Api.Common;
 using IndustrialOS.Api.Middleware;
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Application.Common;
 using IndustrialOS.Infrastructure;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -15,10 +18,28 @@ var builder = WebApplication.CreateBuilder(args);
 // Config local (fora do Git) com segredos do R2 etc.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
-builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
+builder.Host.UseSerilog((ctx, cfg) => cfg
+    .ReadFrom.Configuration(ctx.Configuration)
+    .Enrich.FromLogContext() // expõe o CorrelationId injetado pelo middleware
+    .WriteTo.Console());
 
 // Infra: DbContext multi-tenant, ITenantContext, hasher, JWT.
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Usuário atual (para auditoria) + cache em memória + ProblemDetails.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IUsuarioAtual, UsuarioAtual>();
+builder.Services.AddMemoryCache();
+builder.Services.AddProblemDetails();
+
+// Rate limiting: protege os endpoints de auth (10 req/min por IP).
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "desconhecido",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
 
 // JWT: mapeia o claim "funcao" como Role para habilitar [Authorize(Roles=...)].
 var jwt = builder.Configuration.GetSection("Jwt");
@@ -61,7 +82,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Correlação + tratamento global de erros envolvem todo o pipeline.
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ExceptionMiddleware>();
+
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseMiddleware<TenantMiddleware>(); // apos autenticar: le o claim tenant_id
 app.UseAuthorization();

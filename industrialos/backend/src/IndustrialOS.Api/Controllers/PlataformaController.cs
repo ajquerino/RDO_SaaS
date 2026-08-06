@@ -10,6 +10,7 @@ namespace IndustrialOS.Api.Controllers;
 public record NovaEmpresaRequest(string NomeEmpresa, string AdminNome, string AdminEmail, string AdminSenha);
 public record StatusTenantRequest(string Status);
 public record PlanoPlataformaRequest(string Nome, int? LimiteObras, int? LimiteUsuarios, decimal? PrecoMensal);
+public record PlanoTenantRequest(Guid? PlanoId);
 
 /// <summary>Console de PLATAFORMA (dono do SaaS). ÚNICO ponto de acesso cross-tenant, e SOMENTE aqui:
 /// todo acesso a dados de empresas usa <c>.IgnoreQueryFilters()</c> EXPLÍCITO + [Authorize(SuperAdmin)].
@@ -33,9 +34,14 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         var obrasMap = obras.ToDictionary(x => x.Key, x => x.N);
         var usuariosMap = usuarios.ToDictionary(x => x.Key, x => x.N);
 
+        // Plano atual de cada empresa (fonte de verdade = PlanoId, join com o catálogo de Planos).
+        var planos = await db.Planos.IgnoreQueryFilters().ToDictionaryAsync(p => p.Id, p => p.Nome);
+
         return Ok(tenants.Select(t => new
         {
             t.Id, t.Nome, t.Cnpj, t.Plano, t.Status, t.CriadoEm,
+            t.PlanoId,
+            planoNome = t.PlanoId is { } pid && planos.TryGetValue(pid, out var pn) ? pn : null,
             nObras = obrasMap.GetValueOrDefault(t.Id),
             nUsuarios = usuariosMap.GetValueOrDefault(t.Id)
         }));
@@ -67,6 +73,32 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         t.Status = status;
         await db.SaveChangesAsync();
         return Ok(new { t.Id, t.Status });
+    }
+
+    [HttpPut("tenants/{id:guid}/plano")]
+    public async Task<IActionResult> AtribuirPlano(Guid id, [FromBody] PlanoTenantRequest req)
+    {
+        // Super-admin está fora do tenant: IgnoreQueryFilters explícito para achar empresa e plano.
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id);
+        if (t is null || t.EhSistema) return NotFound();
+
+        string? planoNome = null;
+        if (req.PlanoId is { } pid)
+        {
+            var plano = await db.Planos.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == pid);
+            if (plano is null) return BadRequest(new { erro = "Plano não encontrado." });
+            t.PlanoId = pid;
+            t.Plano = plano.Nome;   // mantém o campo string legado sincronizado (fonte de verdade = PlanoId)
+            planoNome = plano.Nome;
+        }
+        else
+        {
+            t.PlanoId = null;       // "sem plano"
+            t.Plano = "trial";
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { t.Id, t.PlanoId, planoNome });
     }
 
     [HttpPost("tenants")]

@@ -24,10 +24,15 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
         if (user is null || !hasher.Verify(req.Senha, user.SenhaHash))
             return Unauthorized(new { erro = "Credenciais invalidas." });
 
-        // Empresa-cliente suspensa: bloqueia o login dos seus usuários (não afeta o super-admin).
-        if (user.Funcao != Funcao.SuperAdmin &&
-            await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.Status == "suspenso"))
-            return StatusCode(403, new { erro = "Empresa suspensa. Contate o suporte." });
+        // Empresa-cliente excluída/suspensa: bloqueia o login dos seus usuários (não afeta o super-admin).
+        if (user.Funcao != Funcao.SuperAdmin)
+        {
+            var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == user.TenantId);
+            if (tenant is null || tenant.DeletadoEm != null)
+                return StatusCode(403, new { erro = "Empresa não encontrada. Contate o suporte." });
+            if (tenant.Status == "suspenso")
+                return StatusCode(403, new { erro = "Empresa suspensa. Contate o suporte." });
+        }
 
         var tokens = jwt.Gerar(user);
         user.UltimoLogin = DateTime.UtcNow;

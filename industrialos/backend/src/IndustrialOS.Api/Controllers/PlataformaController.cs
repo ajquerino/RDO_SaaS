@@ -7,7 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IndustrialOS.Api.Controllers;
 
-public record NovaEmpresaRequest(string NomeEmpresa, string AdminNome, string AdminEmail, string AdminSenha);
+public record NovaEmpresaRequest(string NomeEmpresa, string? Cnpj, string AdminNome, string AdminEmail, string AdminSenha);
+public record EditarEmpresaRequest(string Nome, string? Cnpj);
 public record StatusTenantRequest(string Status);
 public record PlanoPlataformaRequest(string Nome, int? LimiteObras, int? LimiteUsuarios, decimal? PrecoMensal);
 public record PlanoTenantRequest(Guid? PlanoId);
@@ -24,8 +25,10 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
     [HttpGet("tenants")]
     public async Task<IActionResult> Tenants()
     {
-        // Exclui o tenant de sistema (a própria plataforma) da lista de empresas-cliente.
-        var tenants = await db.Tenants.Where(t => !t.EhSistema).OrderBy(t => t.Nome).ToListAsync();
+        // Exclui o tenant de sistema (a própria plataforma) e empresas excluídas (soft delete).
+        var tenants = await db.Tenants
+            .Where(t => !t.EhSistema && t.DeletadoEm == null)
+            .OrderBy(t => t.Nome).ToListAsync();
 
         var obras = await db.Obras.IgnoreQueryFilters().Where(o => o.DeletadoEm == null)
             .GroupBy(o => o.TenantId).Select(g => new { g.Key, N = g.Count() }).ToListAsync();
@@ -81,6 +84,42 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         return Ok(new { t.Id, t.Status });
     }
 
+    [HttpPut("tenants/{id:guid}")]
+    public async Task<IActionResult> EditarEmpresa(Guid id, [FromBody] EditarEmpresaRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { erro = "Informe o nome da empresa." });
+
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        t.Nome = req.Nome.Trim();
+        t.Cnpj = string.IsNullOrWhiteSpace(req.Cnpj) ? null : req.Cnpj.Trim();
+
+        // Mantém a razão social da empresa principal sincronizada com o nome do tenant.
+        var empresa = await db.Empresas.IgnoreQueryFilters()
+            .Where(e => e.TenantId == id && e.DeletadoEm == null)
+            .OrderBy(e => e.CriadoEm).FirstOrDefaultAsync();
+        if (empresa is not null) empresa.RazaoSocial = t.Nome;
+
+        await db.SaveChangesAsync();
+        return Ok(new { t.Id, t.Nome, t.Cnpj });
+    }
+
+    [HttpDelete("tenants/{id:guid}")]
+    public async Task<IActionResult> ExcluirEmpresa(Guid id)
+    {
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        // Soft delete: a empresa some do console e o login é bloqueado, mas os dados
+        // (obras, RDOs, usuários) são preservados — exclusão reversível pelo banco.
+        t.DeletadoEm = DateTime.UtcNow;
+        t.Status = "suspenso";
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPut("tenants/{id:guid}/plano")]
     public async Task<IActionResult> AtribuirPlano(Guid id, [FromBody] PlanoTenantRequest req)
     {
@@ -118,7 +157,13 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         if (await db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email))
             return Conflict(new { erro = "Já existe um usuário com este e-mail." });
 
-        var tenant = new Tenant { Nome = r.NomeEmpresa.Trim(), Plano = "trial", Status = "ativo" };
+        var tenant = new Tenant
+        {
+            Nome = r.NomeEmpresa.Trim(),
+            Cnpj = string.IsNullOrWhiteSpace(r.Cnpj) ? null : r.Cnpj.Trim(),
+            Plano = "trial",
+            Status = "ativo",
+        };
         db.Tenants.Add(tenant);
 
         // TenantId setado explicitamente com o novo tenant (o Stamp só preenche quando vazio).
@@ -166,8 +211,8 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
     [HttpGet("metricas")]
     public async Task<IActionResult> Metricas()
     {
-        var totalTenants = await db.Tenants.CountAsync(t => !t.EhSistema);
-        var tenantsAtivos = await db.Tenants.CountAsync(t => !t.EhSistema && t.Status == "ativo");
+        var totalTenants = await db.Tenants.CountAsync(t => !t.EhSistema && t.DeletadoEm == null);
+        var tenantsAtivos = await db.Tenants.CountAsync(t => !t.EhSistema && t.DeletadoEm == null && t.Status == "ativo");
         var totalObras = await db.Obras.IgnoreQueryFilters().CountAsync(o => o.DeletadoEm == null);
         var totalRdos = await db.Rdos.IgnoreQueryFilters().CountAsync(r => r.DeletadoEm == null);
         var totalUsuarios = await db.Usuarios.IgnoreQueryFilters()

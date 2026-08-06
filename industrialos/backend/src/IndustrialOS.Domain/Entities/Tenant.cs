@@ -13,4 +13,5 @@ public class Tenant
     public string Status { get; set; } = "ativo";      // ativo | suspenso (| sistema)
     public bool EhSistema { get; set; }                // tenant reservado da plataforma (dono do SaaS)
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime? DeletadoEm { get; set; }          // soft delete da empresa (super-admin)
 }

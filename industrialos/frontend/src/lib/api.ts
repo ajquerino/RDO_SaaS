@@ -153,3 +153,8 @@ export type Equipamento = {
   horimetro?: number | null; custoHora?: number | null; statusManutencao?: string | null;
 };
 export type Documento = { id: string; tipo: string; nome: string; versao?: string | null; tamanhoBytes: number; criadoEm: string; url: string };
+
+// ---- Hardening (Sprint 9) ----
+export type AuditoriaItem = { id: string; acao: string; entidade: string; entidadeId?: string | null; usuarioId?: string | null; detalhe: string; criadoEm: string };
+export type AuditoriaPagina = { total: number; page: number; size: number; itens: AuditoriaItem[] };
+export type Plano = { id: string; nome: string; limiteObras?: number | null; limiteUsuarios?: number | null; precoMensal?: number | null };

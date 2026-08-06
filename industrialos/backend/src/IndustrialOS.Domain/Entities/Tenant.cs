@@ -9,6 +9,7 @@ public class Tenant
     public string Nome { get; set; } = string.Empty;
     public string? Cnpj { get; set; }
     public string Plano { get; set; } = "trial";
+    public Guid? PlanoId { get; set; }                 // vínculo opcional ao catálogo de Planos (Sprint 9)
     public string Status { get; set; } = "ativo";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

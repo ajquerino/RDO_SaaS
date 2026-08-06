@@ -1,12 +1,14 @@
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace IndustrialOS.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
+[EnableRateLimiting("auth")] // 10 req/min por IP em login/refresh
 public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt) : ControllerBase
 {
     /// <summary>Login por e-mail OU nome + senha. Pre-tenant: ignora o filtro de tenant.</summary>

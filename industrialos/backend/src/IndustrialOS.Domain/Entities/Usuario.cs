@@ -12,4 +12,8 @@ public class Usuario : BaseEntity
     public Funcao Funcao { get; set; } = Funcao.Encarregado;
     public bool Ativo { get; set; } = true;
     public DateTime? UltimoLogin { get; set; }
+
+    // LGPD (Sprint 9)
+    public bool ConsentimentoLgpd { get; set; }
+    public DateTime? ConsentimentoEm { get; set; }
 }

@@ -52,11 +52,18 @@ function Empresas() {
   const qc = useQueryClient();
   const [nova, setNova] = useState(false);
   const { data: tenants } = useQuery({ queryKey: ["plataforma-tenants"], queryFn: () => api<TenantResumo[]>("/api/v1/plataforma/tenants") });
+  const { data: planos } = useQuery({ queryKey: ["plataforma-planos"], queryFn: () => api<Plano[]>("/api/v1/plataforma/planos") });
 
   const status = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api(`/api/v1/plataforma/tenants/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); qc.invalidateQueries({ queryKey: ["plataforma-metricas"] }); },
+  });
+
+  const atribuirPlano = useMutation({
+    mutationFn: ({ id, planoId }: { id: string; planoId: string | null }) =>
+      api(`/api/v1/plataforma/tenants/${id}/plano`, { method: "PUT", body: JSON.stringify({ planoId }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); },
   });
 
   return (
@@ -82,7 +89,18 @@ function Empresas() {
                   <span className="font-medium">{t.nome}</span>
                   {t.cnpj && <span className="block text-xs text-slate-500">{t.cnpj}</span>}
                 </td>
-                <td className="pr-3">{t.plano}</td>
+                <td className="pr-3">
+                  <select
+                    value={t.planoId ?? ""}
+                    disabled={atribuirPlano.isPending}
+                    onChange={(e) => atribuirPlano.mutate({ id: t.id, planoId: e.target.value || null })}
+                    className="rounded-lg bg-slate-900 px-2 py-1 text-sm disabled:opacity-50"
+                    title={t.planoNome ?? "sem plano"}
+                  >
+                    <option value="">— sem plano —</option>
+                    {planos?.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </td>
                 <td className="pr-3">{t.nObras}</td>
                 <td className="pr-3">{t.nUsuarios}</td>
                 <td className="pr-3">

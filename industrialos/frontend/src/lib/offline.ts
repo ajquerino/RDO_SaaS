@@ -31,9 +31,14 @@ function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) 
       new Promise<T>((resolve, reject) => {
         const t = db.transaction(store, mode);
         const req = fn(t.objectStore(store));
-        req.onsuccess = () => resolve(req.result as T);
+        let resultado: T;
+        req.onsuccess = () => { resultado = req.result as T; };
         req.onerror = () => reject(req.error);
-        t.oncomplete = () => db.close();
+        // Resolve só no COMMIT (oncomplete), não no onsuccess do request: garante que
+        // uma leitura seguinte (em nova conexão) já enxergue o que foi gravado.
+        t.oncomplete = () => { db.close(); resolve(resultado); };
+        t.onerror = () => { db.close(); reject(t.error); };
+        t.onabort = () => { db.close(); reject(t.error); };
       })
   );
 }
@@ -125,8 +130,10 @@ export async function sincronizar(): Promise<void> {
         });
         if (res.ok || res.status === 204) {
           await removerDaFila(item.id);
+        } else if (res.status === 401 || res.status === 403) {
+          break; // token expirou/sessão caiu: NÃO descarta — reenvia após novo login
         } else if (res.status >= 400 && res.status < 500) {
-          // Requisição inválida/sem permissão: não adianta reenviar — remove para não travar.
+          // Requisição realmente inválida (400/404/409/422): reenviar não resolve — remove p/ não travar.
           await removerDaFila(item.id);
         } else {
           break; // 5xx: para e tenta na próxima rodada

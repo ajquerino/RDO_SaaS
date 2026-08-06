@@ -77,6 +77,8 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const [aprovadoPor, setAprovadoPor] = useState<string | null>(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
   const [salvo, setSalvo] = useState<"" | "salvando" | "salvo" | "erro">("");
+  const [resumo, setResumo] = useState<{ texto: string; origem: string } | null>(null);
+  const [gerandoResumo, setGerandoResumo] = useState(false);
   const [buscandoClima, setBuscandoClima] = useState(false);
   const primeiraCarga = useRef(true);
 
@@ -159,6 +161,13 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
     window.open(URL.createObjectURL(blob), "_blank");
   }
 
+  async function gerarResumo() {
+    setGerandoResumo(true);
+    try { setResumo(await api<{ texto: string; origem: string }>(`/api/v1/rdos/${rdoId}/resumo`)); }
+    catch { setResumo({ texto: "Não foi possível gerar o resumo.", origem: "erro" }); }
+    finally { setGerandoResumo(false); }
+  }
+
   function buscarClima() {
     if (!navigator.geolocation) { alert("GPS não disponível neste dispositivo."); return; }
     setBuscandoClima(true);
@@ -194,9 +203,25 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
           <span className={`text-xs ${salvo === "erro" ? "text-red-400" : "text-emerald-400"}`}>
             {salvo === "salvando" ? "Salvando…" : salvo === "salvo" ? "Salvo ✓" : salvo === "erro" ? "Erro ao salvar" : ""}
           </span>
+          <button onClick={gerarResumo} disabled={gerandoResumo} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600 disabled:opacity-50">
+            {gerandoResumo ? "Gerando…" : "Resumo do dia"}
+          </button>
           <button onClick={abrirPdf} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600">Abrir PDF</button>
         </div>
       </div>
+
+      {resumo && (
+        <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-sm font-semibold">Resumo automático do dia</span>
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              {resumo.origem === "regras" ? "gerado por regras" : resumo.origem === "ia" ? "gerado por IA" : "—"}
+            </span>
+          </div>
+          <p className="text-sm text-slate-200 whitespace-pre-wrap">{resumo.texto}</p>
+          <p className="mt-1 text-[10px] text-slate-500">Resumo automático — por ora por regras; IA entra depois sem mudar a tela.</p>
+        </div>
+      )}
 
       {/* Identificação */}
       <Secao titulo="Identificação">

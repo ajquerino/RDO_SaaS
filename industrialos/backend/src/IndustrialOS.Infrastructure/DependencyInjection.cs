@@ -21,6 +21,11 @@ public static class DependencyInjection
         s.AddSingleton<Application.Pdf.IRdoPdf, Pdf.RdoPdf>();
         s.AddSingleton<Application.Pdf.IMedicaoPdf, Pdf.MedicaoPdf>();
         s.AddSingleton<Application.Storage.IStorage, Storage.R2Storage>();
+
+        // IA: por ora só o stub por regras (sem rede/sem provedor). Para ligar IA de verdade,
+        // criar ResumoIaLlm : IResumoIa (chamando Anthropic/OpenAI) e trocar este registro —
+        // a interface (IResumoIa) e o contexto (RdoContexto) já estão prontos.
+        s.AddScoped<Application.Ia.IResumoIa, Ia.ResumoIaRegras>();
         return s;
     }
 }

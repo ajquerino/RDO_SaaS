@@ -1,3 +1,4 @@
+using System.Text.Json;
 using IndustrialOS.Application.Pdf;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
@@ -84,6 +85,15 @@ public class AprovacaoController(AppDbContext db, IRdoPdf pdf) : ControllerBase
 
         // token consumido: nao pode mais ser reutilizado
         rdo.TokenAprovacao = null;
+
+        // Evento de domínio (outbox). Rota pública/anônima: TenantId vem do RDO (não do contexto).
+        db.EventosDominio.Add(new EventoDominio
+        {
+            TenantId = rdo.TenantId,
+            Tipo = "rdo_aprovado", AgregadoTipo = "Rdo", AgregadoId = rdo.Id,
+            Payload = JsonSerializer.Serialize(new { rdo.Numero, rdo.ObraId, aprovadoPor = rdo.AprovadoPor })
+        });
+
         await db.SaveChangesAsync();
         return Ok(new { Status = rdo.Status.ToString(), rdo.AprovadoPor, rdo.AprovadoEm });
     }
@@ -103,6 +113,14 @@ public class AprovacaoController(AppDbContext db, IRdoPdf pdf) : ControllerBase
         rdo.RevisadoEm = DateTime.UtcNow;
         // token invalidado: a equipe corrige e reenvia (gera novo token no Finalizar)
         rdo.TokenAprovacao = null;
+
+        db.EventosDominio.Add(new EventoDominio
+        {
+            TenantId = rdo.TenantId,
+            Tipo = "revisao_solicitada", AgregadoTipo = "Rdo", AgregadoId = rdo.Id,
+            Payload = JsonSerializer.Serialize(new { rdo.Numero, rdo.ObraId, motivo = rdo.MotivoRevisao })
+        });
+
         await db.SaveChangesAsync();
         return Ok(new { Status = rdo.Status.ToString(), rdo.MotivoRevisao });
     }

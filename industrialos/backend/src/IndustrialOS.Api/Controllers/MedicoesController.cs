@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using IndustrialOS.Application.Pdf;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
@@ -65,6 +66,11 @@ public class MedicoesController(AppDbContext db, IMedicaoPdf pdf) : ControllerBa
             medicao.Parcelas.Add(new MedicaoParcela { Dias = p.Dias, Vencimento = p.Vencimento, Valor = p.Valor, Pct = p.Pct });
 
         db.Medicoes.Add(medicao);
+        db.EventosDominio.Add(new EventoDominio
+        {
+            Tipo = "medicao_emitida", AgregadoTipo = "Medicao", AgregadoId = medicao.Id,
+            Payload = JsonSerializer.Serialize(new { medicao.Numero, medicao.ObraId, medicao.ValorPeriodo })
+        });
         await db.SaveChangesAsync();
         return Ok(new { medicao.Id, medicao.Numero, medicao.Status, medicao.TokenAprovacao });
     }

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using IndustrialOS.Application.Ia;
 using IndustrialOS.Application.Pdf;
 using IndustrialOS.Application.Storage;
 using IndustrialOS.Domain.Entities;
@@ -127,8 +128,36 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         rdo.EnviadoPor = UsuarioId;
         rdo.EnviadoEm = DateTime.UtcNow;
         rdo.TokenAprovacao = Guid.NewGuid().ToString("N");
+
+        // Evento de domínio (outbox) — mesma transação. Base p/ IA/integrações futuras.
+        db.EventosDominio.Add(new EventoDominio
+        {
+            Tipo = "rdo_finalizado", AgregadoTipo = "Rdo", AgregadoId = rdo.Id,
+            Payload = JsonSerializer.Serialize(new { rdo.Numero, rdo.Revisao, rdo.ObraId })
+        });
+
         await db.SaveChangesAsync();
         return Ok(new { rdo.Id, Status = rdo.Status.ToString(), rdo.TokenAprovacao });
+    }
+
+    /// <summary>Resumo automático do dia. Hoje por REGRAS (origem="regras"); a interface IResumoIa
+    /// já está pronta para trocar por uma implementação LLM sem mudar este endpoint.</summary>
+    [HttpGet("rdos/{id:guid}/resumo")]
+    public async Task<IActionResult> Resumo(Guid id, [FromServices] IResumoIa resumoIa)
+    {
+        var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
+        if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
+
+        var obra = await db.Obras.FindAsync(rdo.ObraId);
+        if (obra is null) return NotFound();
+        var itens = await db.ObraItens.Where(i => i.ObraId == rdo.ObraId).ToListAsync();
+        var categorias = (await db.Funcoes.Select(f => new { f.Nome, f.Categoria }).ToListAsync())
+            .GroupBy(x => x.Nome.Trim().ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First().Categoria);
+
+        var ctx = RdoContextoBuilder.Build(rdo, obra, itens, categorias);
+        var res = await resumoIa.ResumirRdoAsync(ctx);
+        return Ok(new { texto = res.Texto, origem = res.Origem });
     }
 
     [HttpGet("rdos/{id:guid}/pdf")]

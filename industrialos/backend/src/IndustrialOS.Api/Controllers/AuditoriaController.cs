@@ -22,7 +22,7 @@ public class AuditoriaController(AppDbContext db, ITenantContext tenant) : Contr
         var q = db.Auditorias.Where(a => a.TenantId == tenant.TenantId);
         if (!string.IsNullOrWhiteSpace(entidade)) q = q.Where(a => a.Entidade == entidade);
         if (de is { } d) q = q.Where(a => a.CriadoEm >= d);
-        if (ate is { } a) q = q.Where(a => a.CriadoEm <= a);
+        if (ate is { } dataAte) q = q.Where(a => a.CriadoEm <= dataAte);
 
         var total = await q.CountAsync();
         var itens = await q.OrderByDescending(a => a.CriadoEm)

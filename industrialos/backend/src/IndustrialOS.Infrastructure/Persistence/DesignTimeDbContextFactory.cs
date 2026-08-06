@@ -12,12 +12,17 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
         var cs = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
                  ?? "Host=localhost;Port=5432;Database=industrialos;Username=industrialos;Password=industrialos";
         var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(cs).Options;
-        return new AppDbContext(options, new NoTenant());
+        return new AppDbContext(options, new NoTenant(), new NoUsuario());
     }
 
     private class NoTenant : ITenantContext
     {
         public Guid? TenantId => null;
         public void Set(Guid tenantId) { }
+    }
+
+    private class NoUsuario : IUsuarioAtual
+    {
+        public Guid? UsuarioId => null;
     }
 }

@@ -70,5 +70,19 @@ public static class DbSeeder
                 db.Funcoes.Add(new FuncaoMaoObra { TenantId = t.Id, Nome = nome, Categoria = categoria });
             await db.SaveChangesAsync();
         }
+
+        // Super-admin da plataforma (dono do SaaS) — idempotente.
+        if (!await db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Funcao == Funcao.SuperAdmin))
+        {
+            db.Usuarios.Add(new Usuario
+            {
+                TenantId = t.Id,
+                Nome = "Super Admin (plataforma)",
+                Email = "super@demo.com",
+                SenhaHash = hasher.Hash("super123"),
+                Funcao = Funcao.SuperAdmin
+            });
+            await db.SaveChangesAsync();
+        }
     }
 }

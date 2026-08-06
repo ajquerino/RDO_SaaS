@@ -13,7 +13,7 @@ public record NovoTenantRequest(string NomeEmpresa, string AdminNome, string Adm
 /// Protegido (Roles=Admin) — NÃO é signup público (isso seria sensível; pedir ao usuário antes).</summary>
 [ApiController]
 [Route("api/v1/tenants")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "SuperAdmin")] // criar empresas/tenants: só o dono da plataforma
 public class TenantsController(AppDbContext db, IPasswordHasher hasher) : ControllerBase
 {
     [HttpPost]

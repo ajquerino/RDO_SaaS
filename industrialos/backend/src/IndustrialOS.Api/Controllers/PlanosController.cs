@@ -13,7 +13,7 @@ public record PlanoRequest(string Nome, int? LimiteObras, int? LimiteUsuarios, d
 // NÃO estão implementados — dependem de decisão do usuário (provedor? planos/preços? regra de trial?).
 [ApiController]
 [Route("api/v1/planos")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "SuperAdmin")] // planos do SaaS: só o dono da plataforma
 public class PlanosController(AppDbContext db) : ControllerBase
 {
     [HttpGet]

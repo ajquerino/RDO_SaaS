@@ -13,7 +13,8 @@ export default function Home() {
   const { usuario, logout } = useAuth();
   const gereObras = podeGerirObras(usuario?.funcao);
   const gereUsuarios = podeGerirUsuarios(usuario?.funcao);
-  const ehAdmin = usuario?.funcao === "Admin";
+  const ehAdmin = usuario?.funcao === "Admin" || usuario?.funcao === "SuperAdmin";
+  const ehSuper = usuario?.funcao === "SuperAdmin"; // dono da plataforma
   const [aba, setAba] = useState<Aba>("obras");
 
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
@@ -22,7 +23,7 @@ export default function Home() {
     { id: "equipamentos", rotulo: "Equipamentos", visivel: gereObras },
     { id: "usuarios", rotulo: "Usuários", visivel: gereUsuarios },
     { id: "auditoria", rotulo: "Auditoria", visivel: ehAdmin },
-    { id: "planos", rotulo: "Planos", visivel: ehAdmin },
+    { id: "planos", rotulo: "Planos", visivel: ehSuper },
   ];
 
   return (
@@ -53,7 +54,7 @@ export default function Home() {
         {aba === "equipamentos" && gereObras && <Equipamentos />}
         {aba === "usuarios" && gereUsuarios && <Usuarios />}
         {aba === "auditoria" && ehAdmin && <Auditoria />}
-        {aba === "planos" && ehAdmin && <Planos />}
+        {aba === "planos" && ehSuper && <Planos />}
       </section>
     </main>
   );

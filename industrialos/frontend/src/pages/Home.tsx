@@ -5,16 +5,14 @@ import Clientes from "./Clientes";
 import Usuarios from "./Usuarios";
 import Equipamentos from "./Equipamentos";
 import Auditoria from "./Auditoria";
-import Planos from "./Planos";
 
-type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria" | "planos";
+type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria";
 
 export default function Home() {
   const { usuario, logout } = useAuth();
   const gereObras = podeGerirObras(usuario?.funcao);
   const gereUsuarios = podeGerirUsuarios(usuario?.funcao);
-  const ehAdmin = usuario?.funcao === "Admin" || usuario?.funcao === "SuperAdmin";
-  const ehSuper = usuario?.funcao === "SuperAdmin"; // dono da plataforma
+  const ehAdmin = usuario?.funcao === "Admin"; // Admin do tenant (o super-admin usa o Console de Plataforma)
   const [aba, setAba] = useState<Aba>("obras");
 
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
@@ -23,7 +21,6 @@ export default function Home() {
     { id: "equipamentos", rotulo: "Equipamentos", visivel: gereObras },
     { id: "usuarios", rotulo: "Usuários", visivel: gereUsuarios },
     { id: "auditoria", rotulo: "Auditoria", visivel: ehAdmin },
-    { id: "planos", rotulo: "Planos", visivel: ehSuper },
   ];
 
   return (
@@ -54,7 +51,6 @@ export default function Home() {
         {aba === "equipamentos" && gereObras && <Equipamentos />}
         {aba === "usuarios" && gereUsuarios && <Usuarios />}
         {aba === "auditoria" && ehAdmin && <Auditoria />}
-        {aba === "planos" && ehSuper && <Planos />}
       </section>
     </main>
   );

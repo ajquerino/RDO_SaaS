@@ -36,7 +36,18 @@ public static class DbSeeder
 
     public static async Task SeedAsync(AppDbContext db, ITenantContext tenant, IPasswordHasher hasher)
     {
-        var t = await db.Tenants.FirstOrDefaultAsync();
+        // Tenant de SISTEMA (Plataforma) — dono do SaaS. O super-admin mora aqui,
+        // por isso NÃO enxerga dados de nenhuma empresa-cliente pelo filtro global.
+        var sistema = await db.Tenants.FirstOrDefaultAsync(x => x.EhSistema);
+        if (sistema is null)
+        {
+            sistema = new Tenant { Nome = "Plataforma", EhSistema = true, Plano = "sistema", Status = "sistema" };
+            db.Tenants.Add(sistema);
+            await db.SaveChangesAsync();
+        }
+
+        // Tenant DEMO (empresa-cliente) — como antes.
+        var t = await db.Tenants.FirstOrDefaultAsync(x => !x.EhSistema);
         if (t is null)
         {
             t = new Tenant { Nome = "Empresa Demo", Plano = "trial" };
@@ -63,7 +74,7 @@ public static class DbSeeder
             tenant.Set(t.Id);
         }
 
-        // Catálogo de funções de mão de obra (idempotente).
+        // Catálogo de funções de mão de obra (idempotente) — no tenant demo.
         if (!await db.Funcoes.AnyAsync())
         {
             foreach (var (nome, categoria) in FuncoesPadrao)
@@ -71,17 +82,24 @@ public static class DbSeeder
             await db.SaveChangesAsync();
         }
 
-        // Super-admin da plataforma (dono do SaaS) — idempotente.
-        if (!await db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Funcao == Funcao.SuperAdmin))
+        // Super-admin da plataforma (dono do SaaS) — mora no tenant de SISTEMA.
+        var super = await db.Usuarios.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Funcao == Funcao.SuperAdmin);
+        if (super is null)
         {
             db.Usuarios.Add(new Usuario
             {
-                TenantId = t.Id,
+                TenantId = sistema.Id,
                 Nome = "Super Admin (plataforma)",
                 Email = "super@demo.com",
                 SenhaHash = hasher.Hash("super123"),
                 Funcao = Funcao.SuperAdmin
             });
+            await db.SaveChangesAsync();
+        }
+        else if (super.TenantId != sistema.Id)
+        {
+            // Migra o super-admin que estava no tenant demo para o de sistema.
+            super.TenantId = sistema.Id;
             await db.SaveChangesAsync();
         }
     }

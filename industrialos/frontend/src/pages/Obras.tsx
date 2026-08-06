@@ -6,6 +6,7 @@ import Rdo from "./Rdo";
 import Dashboard from "./Dashboard";
 import Medicao from "./Medicao";
 import Documentos from "./Documentos";
+import SeloPlano from "./SeloPlano";
 
 const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
@@ -18,22 +19,36 @@ export default function Obras() {
   const [clienteId, setClienteId] = useState("");
   const [prazo, setPrazo] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const { data: obras } = useQuery({ queryKey: ["obras"], queryFn: () => api<ObraLista[]>("/api/v1/obras") });
   const { data: clientes } = useQuery({ queryKey: ["clientes"], queryFn: () => api<Cliente[]>("/api/v1/clientes") });
 
   const criar = useMutation({
     mutationFn: () =>
-      api<{ id: string }>("/api/v1/obras", {
+      api<{ aviso?: string | null }>("/api/v1/obras", {
         method: "POST",
         body: JSON.stringify({ nome, contrato, clienteId: clienteId || null, prazoPagamento: prazo, status: "Andamento" }),
       }),
-    onSuccess: () => { setNome(""); setContrato(""); setClienteId(""); setPrazo(""); setErro(null); qc.invalidateQueries({ queryKey: ["obras"] }); },
+    onSuccess: (r) => {
+      setNome(""); setContrato(""); setClienteId(""); setPrazo(""); setErro(null); setAviso(r.aviso ?? null);
+      qc.invalidateQueries({ queryKey: ["obras"] });
+      qc.invalidateQueries({ queryKey: ["uso-plano"] });
+    },
     onError: (e) => setErro((e as Error).message),
   });
 
   return (
     <div className="space-y-6">
+      {gereObras && <div className="flex justify-end"><SeloPlano /></div>}
+
+      {aviso && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-700 bg-amber-900/40 px-3 py-2 text-sm text-amber-200">
+          <span>{aviso}</span>
+          <button onClick={() => setAviso(null)} className="shrink-0 text-amber-300 hover:text-amber-100">✕</button>
+        </div>
+      )}
+
       {gereObras && (
       <form onSubmit={(e) => { e.preventDefault(); criar.mutate(); }} className="rounded-xl bg-slate-800 p-4 space-y-3">
         <h2 className="font-semibold">Nova obra</h2>

@@ -40,7 +40,11 @@ public class UsuariosController(AppDbContext db, IPasswordHasher hasher) : Contr
 
         db.Usuarios.Add(user);
         await db.SaveChangesAsync();
+
+        // Aviso (NÃO bloqueia): já contando o usuário recém-criado vs o limite do plano.
+        var uso = await Common.UsoPlanoCalc.CalcularAsync(db);
+        var aviso = Common.UsoPlanoCalc.AvisoUsuarios(uso.NUsuarios, uso.LimiteUsuarios, uso.Plano);
         return CreatedAtAction(nameof(Listar), new { id = user.Id },
-            new UsuarioDto(user.Id, user.Nome, user.Email, user.Funcao.ToString()));
+            new { usuario = new UsuarioDto(user.Id, user.Nome, user.Email, user.Funcao.ToString()), aviso });
     }
 }

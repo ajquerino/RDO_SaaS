@@ -172,5 +172,8 @@ export type AuditoriaPagina = { total: number; page: number; size: number; itens
 export type Plano = { id: string; nome: string; limiteObras?: number | null; limiteUsuarios?: number | null; precoMensal?: number | null };
 
 // ---- Console de Plataforma (SuperAdmin) ----
-export type TenantResumo = { id: string; nome: string; cnpj?: string | null; plano: string; planoId?: string | null; planoNome?: string | null; status: string; criadoEm: string; nObras: number; nUsuarios: number };
+export type TenantResumo = { id: string; nome: string; cnpj?: string | null; plano: string; planoId?: string | null; planoNome?: string | null; status: string; criadoEm: string; nObras: number; nUsuarios: number; limiteObras?: number | null; limiteUsuarios?: number | null };
 export type MetricasPlataforma = { totalTenants: number; tenantsAtivos: number; totalObras: number; totalRdos: number; totalUsuarios: number };
+
+// Uso do plano do tenant corrente (aviso, nunca bloqueia)
+export type UsoPlano = { nObras: number; limiteObras?: number | null; nUsuarios: number; limiteUsuarios?: number | null; plano?: string | null };

@@ -35,15 +35,21 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         var usuariosMap = usuarios.ToDictionary(x => x.Key, x => x.N);
 
         // Plano atual de cada empresa (fonte de verdade = PlanoId, join com o catálogo de Planos).
-        var planos = await db.Planos.IgnoreQueryFilters().ToDictionaryAsync(p => p.Id, p => p.Nome);
+        var planos = await db.Planos.IgnoreQueryFilters().ToDictionaryAsync(p => p.Id);
 
-        return Ok(tenants.Select(t => new
+        return Ok(tenants.Select(t =>
         {
-            t.Id, t.Nome, t.Cnpj, t.Plano, t.Status, t.CriadoEm,
-            t.PlanoId,
-            planoNome = t.PlanoId is { } pid && planos.TryGetValue(pid, out var pn) ? pn : null,
-            nObras = obrasMap.GetValueOrDefault(t.Id),
-            nUsuarios = usuariosMap.GetValueOrDefault(t.Id)
+            var plano = t.PlanoId is { } pid && planos.TryGetValue(pid, out var p) ? p : null;
+            return new
+            {
+                t.Id, t.Nome, t.Cnpj, t.Plano, t.Status, t.CriadoEm,
+                t.PlanoId,
+                planoNome = plano?.Nome,
+                nObras = obrasMap.GetValueOrDefault(t.Id),
+                nUsuarios = usuariosMap.GetValueOrDefault(t.Id),
+                limiteObras = plano?.LimiteObras,
+                limiteUsuarios = plano?.LimiteUsuarios
+            };
         }));
     }
 

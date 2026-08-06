@@ -5,6 +5,11 @@ import { useAuth } from "../store/auth";
 
 const brl = (v?: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
+// uso vs limite do plano da empresa (amarelo quando atinge). Sem limite = só a contagem.
+function UsoLimite({ n, limite }: { n: number; limite?: number | null }) {
+  return <span className={limite != null && n >= limite ? "text-amber-400 font-medium" : ""}>{n}{limite != null ? `/${limite}` : ""}</span>;
+}
+
 /** Console do dono da plataforma (SuperAdmin). NÃO mostra dados de nenhuma empresa por padrão —
  * só o que a API de plataforma expõe (contagens/uso), sempre via endpoints [Authorize(SuperAdmin)]. */
 export default function PlataformaConsole() {
@@ -101,8 +106,8 @@ function Empresas() {
                     {planos?.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                   </select>
                 </td>
-                <td className="pr-3">{t.nObras}</td>
-                <td className="pr-3">{t.nUsuarios}</td>
+                <td className="pr-3"><UsoLimite n={t.nObras} limite={t.limiteObras} /></td>
+                <td className="pr-3"><UsoLimite n={t.nUsuarios} limite={t.limiteUsuarios} /></td>
                 <td className="pr-3">
                   <span className={t.status === "suspenso" ? "text-red-400" : "text-emerald-400"}>{t.status}</span>
                 </td>

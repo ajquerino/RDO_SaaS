@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using IndustrialOS.Application.Import;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Infrastructure.Persistence;
@@ -63,6 +64,11 @@ public class ObrasController(AppDbContext db, ICronogramaImport import) : Contro
     {
         var obra = Map(new Obra(), r);
         db.Obras.Add(obra);
+        db.EventosDominio.Add(new EventoDominio
+        {
+            Tipo = "obra_criada", AgregadoTipo = "Obra", AgregadoId = obra.Id,
+            Payload = JsonSerializer.Serialize(new { obra.Nome, obra.Contrato })
+        });
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(Obter), new { id = obra.Id }, obra);
     }

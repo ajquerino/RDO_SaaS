@@ -28,6 +28,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<Documento> Documentos => Set<Documento>();
     public DbSet<Auditoria> Auditorias => Set<Auditoria>();
     public DbSet<Plano> Planos => Set<Plano>();
+    public DbSet<EventoDominio> EventosDominio => Set<EventoDominio>();
 
     public Guid? CurrentTenant => tenant.TenantId;
 
@@ -171,6 +172,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
         });
 
         b.Entity<Plano>(e => e.ToTable("planos"));
+
+        // ---- Outbox de eventos de domínio (arquitetura IA) — BaseEntity, filtro de tenant aplica ----
+        b.Entity<EventoDominio>(e =>
+        {
+            e.ToTable("eventos_dominio");
+            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.HasIndex(x => x.Processado);
+            e.HasIndex(x => x.TenantId);
+        });
 
         // Filtro global de tenant + soft delete para toda BaseEntity.
         foreach (var et in b.Model.GetEntityTypes()

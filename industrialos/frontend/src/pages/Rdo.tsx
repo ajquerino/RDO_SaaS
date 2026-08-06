@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiBlob, apiUpload, type Midia, type ObraItem, type RdoDetalhe, type Efetivo, type Paralisacao, type Recurso, type Servico, type Retrabalho, type Pendencia } from "../lib/api";
+import { api, apiBlob, apiSync, apiUpload, type Midia, type ObraItem, type RdoDetalhe, type Efetivo, type Paralisacao, type Recurso, type Servico, type Retrabalho, type Pendencia } from "../lib/api";
 
 const CLIMAS = ["Ensolarado", "Parcialmente Nublado", "Chuva Fraca", "Chuva Forte", "Neblina", "Vento"];
 
@@ -76,7 +76,7 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const [motivoRevisao, setMotivoRevisao] = useState<string | null>(null);
   const [aprovadoPor, setAprovadoPor] = useState<string | null>(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
-  const [salvo, setSalvo] = useState<"" | "salvando" | "salvo" | "erro">("");
+  const [salvo, setSalvo] = useState<"" | "salvando" | "salvo" | "offline" | "erro">("");
   const [resumo, setResumo] = useState<{ texto: string; origem: string } | null>(null);
   const [gerandoResumo, setGerandoResumo] = useState(false);
   const [buscandoClima, setBuscandoClima] = useState(false);
@@ -109,7 +109,7 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
           supervisor: r.assinaturas?.supervisor,
         },
       });
-    });
+    }).catch(() => { /* offline e sem cache: fica em "Carregando" até haver rede/cache */ });
   }, [rdoId]);
 
   // autosave (debounce 800ms)
@@ -119,15 +119,15 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
     setSalvo("salvando");
     const t = setTimeout(async () => {
       try {
-        await api(`/api/v1/rdos/${rdoId}`, { method: "PUT", body: JSON.stringify({
+        const enviado = await apiSync(`/api/v1/rdos/${rdoId}`, "PUT", JSON.stringify({
           data: form.data, turno: form.turno, ocorrencias: form.ocorrencias,
           clima: form.clima, jornada: form.jornada,
           dificuldades: form.dificuldades, proximoDia: form.proximoDia,
           planejamento: form.planejamento, seguranca: form.seguranca, assinaturas: form.assinaturas,
           efetivo: form.efetivo, paralisacoes: form.paralisacoes, recursos: form.recursos,
           servicos: form.servicos, retrabalho: form.retrabalho,
-        }) });
-        setSalvo("salvo");
+        }));
+        setSalvo(enviado ? "salvo" : "offline"); // false = sem rede, ficou na fila de sync
         qc.invalidateQueries({ queryKey: ["rdos", obraId] });
       } catch { setSalvo("erro"); }
     }, 800);
@@ -200,8 +200,8 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
         <button onClick={onClose} className="text-sky-400 text-sm">‹ Voltar</button>
         <span className="font-semibold">RDO {numero} · {status}</span>
         <div className="flex items-center gap-3">
-          <span className={`text-xs ${salvo === "erro" ? "text-red-400" : "text-emerald-400"}`}>
-            {salvo === "salvando" ? "Salvando…" : salvo === "salvo" ? "Salvo ✓" : salvo === "erro" ? "Erro ao salvar" : ""}
+          <span className={`text-xs ${salvo === "erro" ? "text-red-400" : salvo === "offline" ? "text-amber-400" : "text-emerald-400"}`}>
+            {salvo === "salvando" ? "Salvando…" : salvo === "salvo" ? "Salvo ✓" : salvo === "offline" ? "Salvo offline ⏳" : salvo === "erro" ? "Erro ao salvar" : ""}
           </span>
           <button onClick={gerarResumo} disabled={gerandoResumo} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600 disabled:opacity-50">
             {gerandoResumo ? "Gerando…" : "Resumo do dia"}

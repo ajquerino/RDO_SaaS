@@ -1,3 +1,5 @@
+import { ehErroDeRede, enfileirar, gravarCache, lerCache } from "./offline";
+
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export function getToken() {
@@ -5,9 +7,11 @@ export function getToken() {
 }
 
 /** fetch com Bearer + tratamento basico de erro (JSON).
- *  Tem timeout (padrao 20s): sem isso, se a API nao responder o spinner fica eterno. */
+ *  Tem timeout (padrao 20s): sem isso, se a API nao responder o spinner fica eterno.
+ *  Offline-first: GETs bem-sucedidos vao para o cache (IndexedDB); sem rede, cai no cache. */
 export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
   const token = getToken();
+  const metodo = (init.method ?? "GET").toUpperCase();
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -25,13 +29,36 @@ export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 2
       const body = await res.json().catch(() => ({}));
       throw new Error(body.erro ?? body.title ?? `Erro ${res.status}`);
     }
-    return res.json() as Promise<T>;
+    const dados = (await res.json()) as T;
+    if (metodo === "GET") await gravarCache(path, dados); // guarda para abrir offline depois
+    return dados;
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError")
-      throw new Error("Tempo de resposta esgotado — verifique se a API está no ar.");
+      e = new Error("Tempo de resposta esgotado — verifique se a API está no ar.");
+    // Sem rede num GET: devolve a última versão em cache, se existir.
+    if (metodo === "GET" && ehErroDeRede(e)) {
+      const cache = await lerCache<T>(path);
+      if (cache !== undefined) return cache;
+    }
     throw e;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Escrita tolerante a offline (usada no autosave do RDO). Tenta enviar; se estiver
+ *  sem rede, enfileira em IndexedDB e resolve como "salvo offline" para sincronizar depois.
+ *  Retorna true = enviado agora; false = enfileirado (offline). */
+export async function apiSync(path: string, method: string, body: string): Promise<boolean> {
+  try {
+    await api(path, { method, body });
+    return true;
+  } catch (e) {
+    if (ehErroDeRede(e)) {
+      await enfileirar(method.toUpperCase(), path, body);
+      return false;
+    }
+    throw e; // erro real do servidor (validação etc.) — deixa a UI mostrar
   }
 }
 

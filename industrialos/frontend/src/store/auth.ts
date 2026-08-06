@@ -5,6 +5,7 @@ export type Usuario = { id: string; nome: string; email: string | null; funcao: 
 // Regras de acesso (front). O backend também valida.
 export const podeGerirObras = (f?: string) => f === "Planejador" || f === "Gestor" || f === "Admin";
 export const podeGerirUsuarios = (f?: string) => f === "Gestor" || f === "Admin";
+export const podeExcluirClientes = (f?: string) => f === "Planejador" || f === "Gestor" || f === "Admin";
 export const podeVerValores = (f?: string) => f === "Planejador" || f === "Gestor" || f === "Admin";
 
 type AuthState = {

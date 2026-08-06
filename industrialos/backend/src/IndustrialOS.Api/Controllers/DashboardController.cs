@@ -46,16 +46,18 @@ public class DashboardController(AppDbContext db, IMemoryCache cache) : Controll
         var itens = await db.ObraItens.Where(i => i.ObraId == obraId).ToListAsync();
         var rdos = await db.Rdos.Where(r => r.ObraId == obraId).ToListAsync();
 
-        // % atual de cada item = maior avanço reportado em qualquer RDO
-        decimal PctItem(Guid itemId)
-        {
-            var item = itens.First(i => i.Id == itemId);
-            decimal pct = 0m;
-            foreach (var r in rdos)
-                foreach (var s in r.Servicos.Where(s => s.ObraItemId == itemId))
-                    pct = Math.Max(pct, AvancoCalculo.PctItem(s, item));
-            return pct;
-        }
+        // % atual de cada item = maior avanço reportado em qualquer RDO.
+        // Calculado UMA vez (uma passada por serviços), não a cada consulta — antes o
+        // dashboard varria todos os RDOs várias vezes por item (O(N·R·S)) e podia
+        // "travar carregando" em obras grandes.
+        var itemPorId = itens.ToDictionary(i => i.Id);
+        var pctPorItem = itens.ToDictionary(i => i.Id, _ => 0m);
+        foreach (var r in rdos)
+            foreach (var s in r.Servicos)
+                if (s.ObraItemId is { } iid && itemPorId.TryGetValue(iid, out var item))
+                    pctPorItem[iid] = Math.Max(pctPorItem[iid], AvancoCalculo.PctItem(s, item));
+
+        decimal PctItem(Guid itemId) => pctPorItem.TryGetValue(itemId, out var p) ? p : 0m;
 
         var itensAvanco = itens.Select(i => new { i.Descricao, i.HhPrevisto, i.QtdPrevista, Pct = Math.Round(PctItem(i.Id) * 100, 1) })
             .OrderByDescending(x => x.HhPrevisto ?? 0).ToList();

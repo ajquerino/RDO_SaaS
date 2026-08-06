@@ -10,13 +10,20 @@ const FAROL: Record<string, { cor: string; rotulo: string }> = {
 
 /** Aba Dashboard da obra (Sprint 6): faróis, avanço, HH, Curva S e Paretos. */
 export default function Dashboard({ obraId }: { obraId: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["dashboard", obraId],
     queryFn: () => api<Dash>(`/api/v1/obras/${obraId}/dashboard`),
+    retry: 1,
   });
 
   if (isLoading) return <p className="text-slate-400 text-sm py-4">Carregando indicadores…</p>;
-  if (isError || !data) return <p className="text-slate-400 text-sm py-4">Não foi possível carregar o dashboard.</p>;
+  if (isError || !data)
+    return (
+      <p className="text-slate-400 text-sm py-4">
+        Não foi possível carregar o dashboard.
+        {error instanceof Error ? ` (${error.message})` : ""}
+      </p>
+    );
 
   const farol = FAROL[data.farol.cor] ?? FAROL.cinza;
 

@@ -4,23 +4,35 @@ export function getToken() {
   return localStorage.getItem("accessToken");
 }
 
-/** fetch com Bearer + tratamento basico de erro (JSON). */
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** fetch com Bearer + tratamento basico de erro (JSON).
+ *  Tem timeout (padrao 20s): sem isso, se a API nao responder o spinner fica eterno. */
+export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
   const token = getToken();
-  const res = await fetch(`${API}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
-  if (res.status === 204) return undefined as T;
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.erro ?? `Erro ${res.status}`);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API}${path}`, {
+      ...init,
+      signal: init.signal ?? ctrl.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+    if (res.status === 204) return undefined as T;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.erro ?? body.title ?? `Erro ${res.status}`);
+    }
+    return res.json() as Promise<T>;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError")
+      throw new Error("Tempo de resposta esgotado — verifique se a API está no ar.");
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json() as Promise<T>;
 }
 
 /** upload multipart (sem Content-Type manual — o browser define o boundary). */

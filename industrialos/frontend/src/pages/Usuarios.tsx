@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Usuario } from "../store/auth";
+import SeloPlano from "./SeloPlano";
 
 export default function Usuarios() {
   const { data, error } = useQuery({ queryKey: ["usuarios"], queryFn: () => api<Usuario[]>("/api/v1/usuarios") });
   return (
-    <div>
+    <div className="space-y-3">
+      <div className="flex justify-end"><SeloPlano /></div>
       {error && <p className="text-red-400 text-sm">{(error as Error).message}</p>}
       <ul className="space-y-2">
         {data?.map((u) => (

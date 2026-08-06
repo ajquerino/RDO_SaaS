@@ -70,7 +70,11 @@ public class ObrasController(AppDbContext db, ICronogramaImport import) : Contro
             Payload = JsonSerializer.Serialize(new { obra.Nome, obra.Contrato })
         });
         await db.SaveChangesAsync();
-        return CreatedAtAction(nameof(Obter), new { id = obra.Id }, obra);
+
+        // Aviso (NÃO bloqueia): já contando a obra recém-criada vs o limite do plano.
+        var uso = await Common.UsoPlanoCalc.CalcularAsync(db);
+        var aviso = Common.UsoPlanoCalc.AvisoObras(uso.NObras, uso.LimiteObras, uso.Plano);
+        return CreatedAtAction(nameof(Obter), new { id = obra.Id }, new { obra, aviso });
     }
 
     [HttpPut("{id:guid}")]

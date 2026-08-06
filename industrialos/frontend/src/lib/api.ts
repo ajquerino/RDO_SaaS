@@ -158,3 +158,7 @@ export type Documento = { id: string; tipo: string; nome: string; versao?: strin
 export type AuditoriaItem = { id: string; acao: string; entidade: string; entidadeId?: string | null; usuarioId?: string | null; detalhe: string; criadoEm: string };
 export type AuditoriaPagina = { total: number; page: number; size: number; itens: AuditoriaItem[] };
 export type Plano = { id: string; nome: string; limiteObras?: number | null; limiteUsuarios?: number | null; precoMensal?: number | null };
+
+// ---- Console de Plataforma (SuperAdmin) ----
+export type TenantResumo = { id: string; nome: string; cnpj?: string | null; plano: string; status: string; criadoEm: string; nObras: number; nUsuarios: number };
+export type MetricasPlataforma = { totalTenants: number; tenantsAtivos: number; totalObras: number; totalRdos: number; totalUsuarios: number };

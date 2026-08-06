@@ -1,4 +1,5 @@
 using IndustrialOS.Application.Auth;
+using IndustrialOS.Domain.Entities;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -22,6 +23,11 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
 
         if (user is null || !hasher.Verify(req.Senha, user.SenhaHash))
             return Unauthorized(new { erro = "Credenciais invalidas." });
+
+        // Empresa-cliente suspensa: bloqueia o login dos seus usuários (não afeta o super-admin).
+        if (user.Funcao != Funcao.SuperAdmin &&
+            await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.Status == "suspenso"))
+            return StatusCode(403, new { erro = "Empresa suspensa. Contate o suporte." });
 
         var tokens = jwt.Gerar(user);
         user.UltimoLogin = DateTime.UtcNow;

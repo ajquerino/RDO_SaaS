@@ -1,0 +1,182 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, type MetricasPlataforma, type Plano, type TenantResumo } from "../lib/api";
+import { useAuth } from "../store/auth";
+
+const brl = (v?: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+
+/** Console do dono da plataforma (SuperAdmin). NÃO mostra dados de nenhuma empresa por padrão —
+ * só o que a API de plataforma expõe (contagens/uso), sempre via endpoints [Authorize(SuperAdmin)]. */
+export default function PlataformaConsole() {
+  const { usuario, logout } = useAuth();
+  return (
+    <main className="min-h-screen bg-slate-900 text-slate-100">
+      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+        <div>
+          <h1 className="text-lg font-bold">IndustrialOS · <span className="text-sky-400">Plataforma</span></h1>
+          <p className="text-slate-400 text-xs">{usuario?.nome} · Console do SaaS</p>
+        </div>
+        <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
+      </header>
+      <section className="mx-auto max-w-4xl space-y-6 p-4">
+        <Metricas />
+        <Empresas />
+        <Planos />
+      </section>
+    </main>
+  );
+}
+
+function Metricas() {
+  const { data } = useQuery({ queryKey: ["plataforma-metricas"], queryFn: () => api<MetricasPlataforma>("/api/v1/plataforma/metricas") });
+  const cards = [
+    { r: "Empresas", v: data ? `${data.tenantsAtivos}/${data.totalTenants}` : "—", s: "ativas / total" },
+    { r: "Obras", v: data?.totalObras ?? "—", s: "no SaaS" },
+    { r: "RDOs", v: data?.totalRdos ?? "—", s: "no SaaS" },
+    { r: "Usuários", v: data?.totalUsuarios ?? "—", s: "de empresas" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.r} className="rounded-xl bg-slate-800 p-3">
+          <p className="text-xs text-slate-400">{c.r}</p>
+          <p className="text-2xl font-bold leading-tight">{c.v}</p>
+          <p className="text-xs text-slate-500">{c.s}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Empresas() {
+  const qc = useQueryClient();
+  const [nova, setNova] = useState(false);
+  const { data: tenants } = useQuery({ queryKey: ["plataforma-tenants"], queryFn: () => api<TenantResumo[]>("/api/v1/plataforma/tenants") });
+
+  const status = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api(`/api/v1/plataforma/tenants/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); qc.invalidateQueries({ queryKey: ["plataforma-metricas"] }); },
+  });
+
+  return (
+    <section className="rounded-xl bg-slate-800 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold">Empresas</h2>
+        <button onClick={() => setNova((v) => !v)} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold hover:bg-sky-500">
+          {nova ? "Fechar" : "+ Nova empresa"}
+        </button>
+      </div>
+
+      {nova && <NovaEmpresa onDone={() => setNova(false)} />}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-slate-400">
+            <tr><th className="py-1 pr-3">Empresa</th><th className="pr-3">Plano</th><th className="pr-3">Obras</th><th className="pr-3">Usuários</th><th className="pr-3">Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {tenants?.map((t) => (
+              <tr key={t.id} className="border-t border-slate-700/50">
+                <td className="py-1 pr-3">
+                  <span className="font-medium">{t.nome}</span>
+                  {t.cnpj && <span className="block text-xs text-slate-500">{t.cnpj}</span>}
+                </td>
+                <td className="pr-3">{t.plano}</td>
+                <td className="pr-3">{t.nObras}</td>
+                <td className="pr-3">{t.nUsuarios}</td>
+                <td className="pr-3">
+                  <span className={t.status === "suspenso" ? "text-red-400" : "text-emerald-400"}>{t.status}</span>
+                </td>
+                <td className="text-right">
+                  {t.status === "suspenso" ? (
+                    <button onClick={() => status.mutate({ id: t.id, status: "ativo" })} className="rounded-lg bg-emerald-700/60 px-2 py-1 text-xs text-emerald-100 hover:bg-emerald-700">Ativar</button>
+                  ) : (
+                    <button onClick={() => { if (confirm(`Suspender "${t.nome}"? Os usuários dela não conseguirão entrar.`)) status.mutate({ id: t.id, status: "suspenso" }); }} className="rounded-lg bg-red-900/60 px-2 py-1 text-xs text-red-200 hover:bg-red-900">Suspender</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {tenants?.length === 0 && <tr><td colSpan={6} className="py-2 text-slate-400">Nenhuma empresa cadastrada.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function NovaEmpresa({ onDone }: { onDone: () => void }) {
+  const qc = useQueryClient();
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [adminNome, setAdminNome] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminSenha, setAdminSenha] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+
+  const criar = useMutation({
+    mutationFn: () => api("/api/v1/plataforma/tenants", { method: "POST", body: JSON.stringify({ nomeEmpresa, adminNome, adminEmail, adminSenha }) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); qc.invalidateQueries({ queryKey: ["plataforma-metricas"] }); onDone(); },
+    onError: (e) => setErro((e as Error).message),
+  });
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); criar.mutate(); }} className="mb-4 rounded-lg bg-slate-900/60 p-3 space-y-3">
+      <p className="text-sm text-slate-400">Cria a empresa + o primeiro usuário administrador dela.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" placeholder="Nome da empresa *" value={nomeEmpresa} onChange={(e) => setNomeEmpresa(e.target.value)} required />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" placeholder="Nome do admin *" value={adminNome} onChange={(e) => setAdminNome(e.target.value)} required />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" type="email" placeholder="E-mail do admin *" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} required />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" type="password" placeholder="Senha do admin *" value={adminSenha} onChange={(e) => setAdminSenha(e.target.value)} required />
+      </div>
+      {erro && <p className="text-sm text-red-400">{erro}</p>}
+      <button disabled={criar.isPending} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50">
+        {criar.isPending ? "Criando…" : "Criar empresa"}
+      </button>
+    </form>
+  );
+}
+
+function Planos() {
+  const qc = useQueryClient();
+  const { data: planos } = useQuery({ queryKey: ["plataforma-planos"], queryFn: () => api<Plano[]>("/api/v1/plataforma/planos") });
+  const [nome, setNome] = useState("");
+  const [obras, setObras] = useState("");
+  const [usuarios, setUsuarios] = useState("");
+  const [preco, setPreco] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+
+  const criar = useMutation({
+    mutationFn: () => api<Plano>("/api/v1/plataforma/planos", {
+      method: "POST",
+      body: JSON.stringify({ nome, limiteObras: obras ? Number(obras) : null, limiteUsuarios: usuarios ? Number(usuarios) : null, precoMensal: preco ? Number(preco) : null }),
+    }),
+    onSuccess: () => { setNome(""); setObras(""); setUsuarios(""); setPreco(""); setErro(null); qc.invalidateQueries({ queryKey: ["plataforma-planos"] }); },
+    onError: (e) => setErro((e as Error).message),
+  });
+
+  return (
+    <section className="rounded-xl bg-slate-800 p-4 space-y-3">
+      <h2 className="font-semibold">Planos do SaaS</h2>
+      <p className="rounded-lg bg-slate-900/40 px-3 py-2 text-xs text-slate-400">Só o modelo — cobrança/checkout/trial não implementados.</p>
+
+      <form onSubmit={(e) => { e.preventDefault(); criar.mutate(); }} className="grid gap-2 sm:grid-cols-5">
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" placeholder="Nome *" value={nome} onChange={(e) => setNome(e.target.value)} required />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" type="number" placeholder="Obras" value={obras} onChange={(e) => setObras(e.target.value)} />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" type="number" placeholder="Usuários" value={usuarios} onChange={(e) => setUsuarios(e.target.value)} />
+        <input className="rounded-lg bg-slate-900 px-3 py-2 text-sm" type="number" step="0.01" placeholder="R$/mês" value={preco} onChange={(e) => setPreco(e.target.value)} />
+        <button disabled={criar.isPending} className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">Adicionar</button>
+      </form>
+      {erro && <p className="text-sm text-red-400">{erro}</p>}
+
+      <ul className="space-y-1">
+        {planos?.map((p) => (
+          <li key={p.id} className="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm">
+            <span className="font-medium">{p.nome}</span>
+            <span className="text-slate-400">{p.limiteObras ?? "∞"} obras · {p.limiteUsuarios ?? "∞"} usuários · {brl(p.precoMensal)}/mês</span>
+          </li>
+        ))}
+        {planos?.length === 0 && <li className="text-slate-500 text-sm">Nenhum plano.</li>}
+      </ul>
+    </section>
+  );
+}

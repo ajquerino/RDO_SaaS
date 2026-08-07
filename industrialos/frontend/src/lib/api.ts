@@ -34,6 +34,19 @@ export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 2
     clearTimeout(timer);
   }
 }
+// Nota: uma resposta 402 (assinatura vencida) cai no `if (!res.ok)` acima e lança um Error
+// com a mensagem amigável do corpo ({ erro }). O modo somente-leitura no front é só melhoria de UX.
+
+// ---- Assinatura / inadimplência ----
+export type AssinaturaStatus = {
+  estado: "SemAssinatura" | "Trial" | "EmDia" | "PrestesAVencer" | "Vencido" | "Bloqueada";
+  bloqueada: boolean;
+  diasParaVencer?: number | null;
+  diasAtraso?: number | null;
+  avisoNivel?: number | null;
+  vencimentoEm?: string | null;
+  planoNome?: string | null;
+};
 
 /** upload multipart (sem Content-Type manual — o browser define o boundary). */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {

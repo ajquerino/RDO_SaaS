@@ -29,6 +29,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<Auditoria> Auditorias => Set<Auditoria>();
     public DbSet<Plano> Planos => Set<Plano>();
     public DbSet<RedefinicaoSenha> RedefinicoesSenha => Set<RedefinicaoSenha>();
+    public DbSet<Assinatura> Assinaturas => Set<Assinatura>();
     public DbSet<EventoDominio> EventosDominio => Set<EventoDominio>();
 
     public Guid? CurrentTenant => tenant.TenantId;
@@ -180,6 +181,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
             e.ToTable("redefinicoes_senha");
             e.HasIndex(x => x.TokenHash);
             e.HasIndex(x => x.UsuarioId);
+        });
+
+        // Assinatura — estado de cobrança por tenant (não é BaseEntity: sem filtro global). Uma por tenant.
+        b.Entity<Assinatura>(e =>
+        {
+            e.ToTable("assinaturas");
+            e.HasIndex(x => x.TenantId).IsUnique();
         });
 
         // ---- Outbox de eventos de domínio (arquitetura IA) — BaseEntity, filtro de tenant aplica ----

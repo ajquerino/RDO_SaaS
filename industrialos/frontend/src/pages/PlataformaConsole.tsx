@@ -26,6 +26,7 @@ export default function PlataformaConsole() {
       <section className="mx-auto max-w-4xl space-y-6 p-4">
         <Metricas />
         <Empresas />
+        <Assinaturas />
         <Planos />
       </section>
     </main>
@@ -50,6 +51,75 @@ function Metricas() {
         </div>
       ))}
     </div>
+  );
+}
+
+type AssinaturaRow = {
+  id: string; nome: string; estado: string; bloqueada: boolean;
+  vencimentoEm?: string | null; trialAte?: string | null;
+  diasParaVencer?: number | null; diasAtraso?: number | null;
+  planoId?: string | null; planoNome?: string | null;
+};
+
+const CorEstado: Record<string, string> = {
+  SemAssinatura: "text-slate-400", Trial: "text-sky-400", EmDia: "text-emerald-400",
+  PrestesAVencer: "text-amber-400", Vencido: "text-orange-400", Bloqueada: "text-red-400",
+};
+
+/** Gestão manual de assinaturas (interino até o gateway): estado calculado, editar vencimento e "marcar pago". */
+function Assinaturas() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["plataforma-assinaturas"], queryFn: () => api<AssinaturaRow[]>("/api/v1/plataforma/assinaturas") });
+  const invalidar = () => qc.invalidateQueries({ queryKey: ["plataforma-assinaturas"] });
+
+  const pagar = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/plataforma/tenants/${id}/assinatura/pagar`, { method: "POST" }),
+    onSuccess: invalidar,
+  });
+  const salvarVenc = useMutation({
+    mutationFn: (v: { id: string; vencimentoEm: string | null; planoId: string | null; trialAte: string | null }) =>
+      api(`/api/v1/plataforma/tenants/${v.id}/assinatura`, { method: "PUT", body: JSON.stringify({ vencimentoEm: v.vencimentoEm, planoId: v.planoId, trialAte: v.trialAte }) }),
+    onSuccess: invalidar,
+  });
+
+  return (
+    <section className="rounded-xl bg-slate-800 p-4">
+      <h2 className="mb-3 font-semibold">Assinaturas <span className="text-xs font-normal text-slate-500">· gestão manual (até o gateway)</span></h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-slate-400">
+            <tr><th className="py-1 pr-3">Empresa</th><th className="pr-3">Estado</th><th className="pr-3">Vencimento</th><th></th></tr>
+          </thead>
+          <tbody>
+            {data?.map((a) => (
+              <tr key={a.id} className="border-t border-slate-700/50">
+                <td className="py-1 pr-3">
+                  <span className="font-medium">{a.nome}</span>
+                  {a.planoNome && <span className="block text-xs text-slate-500">{a.planoNome}</span>}
+                </td>
+                <td className="pr-3">
+                  <span className={CorEstado[a.estado] ?? ""}>{a.estado}</span>
+                  {a.estado === "Vencido" && a.diasAtraso != null && <span className="text-xs text-slate-500"> · {a.diasAtraso}d</span>}
+                  {a.bloqueada && <span className="text-xs text-red-400"> · bloqueada</span>}
+                </td>
+                <td className="pr-3">
+                  <input
+                    type="date"
+                    defaultValue={a.vencimentoEm ?? ""}
+                    onChange={(e) => salvarVenc.mutate({ id: a.id, vencimentoEm: e.target.value || null, planoId: a.planoId ?? null, trialAte: a.trialAte ?? null })}
+                    className="rounded-lg bg-slate-900 px-2 py-1 text-sm"
+                  />
+                </td>
+                <td className="text-right">
+                  <button onClick={() => pagar.mutate(a.id)} disabled={pagar.isPending} className="rounded-lg bg-emerald-700/60 px-2 py-1 text-xs text-emerald-100 hover:bg-emerald-700 disabled:opacity-50">Marcar pago</button>
+                </td>
+              </tr>
+            ))}
+            {data?.length === 0 && <tr><td colSpan={4} className="py-2 text-slate-400">Nenhuma empresa.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

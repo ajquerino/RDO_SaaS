@@ -68,16 +68,23 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Migrations + seed de dev automaticos.
+// Migrations + seed. Migração é idempotente e roda em TODOS os ambientes (cria/atualiza o
+// schema no 1º boot em produção). O seed de SISTEMA (tenant Plataforma + super-admin) também
+// roda sempre; o seed de DEMO (empresa/admin/funções fictícios) só em Development.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+    await db.Database.MigrateAsync();
+    await DbSeeder.SeedSistemaAsync(db, hasher, builder.Configuration);
+
+    if (app.Environment.IsDevelopment())
+        await DbSeeder.SeedDemoAsync(db, scope.ServiceProvider.GetRequiredService<ITenantContext>(), hasher);
+}
+
+// Swagger só em Development.
 if (app.Environment.IsDevelopment())
 {
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
-    await DbSeeder.SeedAsync(db,
-        scope.ServiceProvider.GetRequiredService<ITenantContext>(),
-        scope.ServiceProvider.GetRequiredService<IPasswordHasher>());
-
     app.UseSwagger();
     app.UseSwaggerUI();
 }

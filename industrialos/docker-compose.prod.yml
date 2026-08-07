@@ -1,0 +1,45 @@
+# Produção com Docker Compose: banco + API + frontend.
+# Uso:  cp .env.example .env  (preencher)  &&  docker compose -f docker-compose.prod.yml up -d --build
+# Segredos NUNCA ficam aqui — vêm do arquivo .env (env_file / substituição ${VAR}).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-industrialos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-industrialos}
+      POSTGRES_DB: ${POSTGRES_DB:-industrialos}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-industrialos} -d ${POSTGRES_DB:-industrialos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # VITE_API_URL é build-time; o Compose lê o valor do .env automaticamente.
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:

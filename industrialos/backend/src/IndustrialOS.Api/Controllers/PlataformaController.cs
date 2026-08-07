@@ -181,6 +181,9 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         };
         db.Usuarios.Add(admin);
 
+        // Toda empresa nova nasce com o catálogo padrão de 61 funções de M.O. (mesmo TenantId, mesmo SaveChanges).
+        db.Funcoes.AddRange(DbSeeder.FuncoesParaTenant(tenant.Id));
+
         await db.SaveChangesAsync();
         return Ok(new { tenantId = tenant.Id, tenant.Nome, adminId = admin.Id, admin.Email });
     }

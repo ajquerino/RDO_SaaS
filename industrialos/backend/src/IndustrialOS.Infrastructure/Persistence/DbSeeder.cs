@@ -2,14 +2,20 @@ using IndustrialOS.Application.Auth;
 using IndustrialOS.Application.Common;
 using IndustrialOS.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace IndustrialOS.Infrastructure.Persistence;
 
-/// <summary>Seed de desenvolvimento: tenant demo + admin, e catálogo de funções de M.O.</summary>
+/// <summary>Seed do banco. Dividido em:
+/// - <see cref="SeedSistemaAsync"/>: roda em TODOS os ambientes (tenant de sistema + super-admin).
+/// - <see cref="SeedDemoAsync"/>: roda SOMENTE em Development (empresa demo + admin + funções).
+/// O catálogo <see cref="FuncoesPadrao"/> é público para ser reusado ao criar empresa nova.</summary>
 public static class DbSeeder
 {
     // Funções reais (categoria: Direta = executa a obra; Indireta = apoio/gestão).
-    private static readonly (string Nome, string Categoria)[] FuncoesPadrao =
+    // Público: reutilizado ao criar uma empresa nova (PlataformaController.CriarTenant),
+    // para que todo tenant novo já nasça com o catálogo de mão de obra.
+    public static readonly (string Nome, string Categoria)[] FuncoesPadrao =
     [
         // ---- MÃO DE OBRA DIRETA ----
         ("APRENDIZ", "Direta"), ("AUX.MONTAGEM", "Direta"), ("AUX.MONTAGEM I", "Direta"),
@@ -34,10 +40,17 @@ public static class DbSeeder
         ("TECNICO DE MATERIAIS", "Indireta"), ("TST", "Indireta"), ("TST I", "Indireta"), ("TST II", "Indireta")
     ];
 
-    public static async Task SeedAsync(AppDbContext db, ITenantContext tenant, IPasswordHasher hasher)
+    /// <summary>Cria as 61 funções padrão para um tenant (sem salvar — o caller faz o SaveChanges).
+    /// Usado no seed demo e ao criar uma empresa nova pelo console do super-admin.</summary>
+    public static IEnumerable<FuncaoMaoObra> FuncoesParaTenant(Guid tenantId) =>
+        FuncoesPadrao.Select(f => new FuncaoMaoObra { TenantId = tenantId, Nome = f.Nome, Categoria = f.Categoria });
+
+    /// <summary>Roda SEMPRE (todos os ambientes): tenant de SISTEMA "Plataforma" + usuário super-admin.
+    /// O super-admin mora no tenant de sistema, então NÃO enxerga dado de nenhuma empresa-cliente.
+    /// E-mail/senha vêm da config (Seed:SuperAdminEmail / Seed:SuperAdminSenha); o fallback
+    /// super@demo.com / super123 é só conveniência de dev — em produção defina os dois na .env.</summary>
+    public static async Task SeedSistemaAsync(AppDbContext db, IPasswordHasher hasher, IConfiguration config)
     {
-        // Tenant de SISTEMA (Plataforma) — dono do SaaS. O super-admin mora aqui,
-        // por isso NÃO enxerga dados de nenhuma empresa-cliente pelo filtro global.
         var sistema = await db.Tenants.FirstOrDefaultAsync(x => x.EhSistema);
         if (sistema is null)
         {
@@ -46,7 +59,34 @@ public static class DbSeeder
             await db.SaveChangesAsync();
         }
 
-        // Tenant DEMO (empresa-cliente) — como antes.
+        var email = (config["Seed:SuperAdminEmail"] ?? "super@demo.com").Trim().ToLowerInvariant();
+        var senha = config["Seed:SuperAdminSenha"] ?? "super123";
+
+        var super = await db.Usuarios.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Funcao == Funcao.SuperAdmin);
+        if (super is null)
+        {
+            db.Usuarios.Add(new Usuario
+            {
+                TenantId = sistema.Id,
+                Nome = "Super Admin (plataforma)",
+                Email = email,
+                SenhaHash = hasher.Hash(senha),
+                Funcao = Funcao.SuperAdmin
+            });
+            await db.SaveChangesAsync();
+        }
+        else if (super.TenantId != sistema.Id)
+        {
+            // Migra um super-admin que porventura tenha nascido fora do tenant de sistema.
+            super.TenantId = sistema.Id;
+            await db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>Roda SOMENTE em Development: cria a "Empresa Demo" + admin@demo.com + as 61 funções
+    /// no tenant demo. NUNCA deve rodar em produção (nada de dados fictícios lá).</summary>
+    public static async Task SeedDemoAsync(AppDbContext db, ITenantContext tenant, IPasswordHasher hasher)
+    {
         var t = await db.Tenants.FirstOrDefaultAsync(x => !x.EhSistema);
         if (t is null)
         {
@@ -77,29 +117,7 @@ public static class DbSeeder
         // Catálogo de funções de mão de obra (idempotente) — no tenant demo.
         if (!await db.Funcoes.AnyAsync())
         {
-            foreach (var (nome, categoria) in FuncoesPadrao)
-                db.Funcoes.Add(new FuncaoMaoObra { TenantId = t.Id, Nome = nome, Categoria = categoria });
-            await db.SaveChangesAsync();
-        }
-
-        // Super-admin da plataforma (dono do SaaS) — mora no tenant de SISTEMA.
-        var super = await db.Usuarios.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Funcao == Funcao.SuperAdmin);
-        if (super is null)
-        {
-            db.Usuarios.Add(new Usuario
-            {
-                TenantId = sistema.Id,
-                Nome = "Super Admin (plataforma)",
-                Email = "super@demo.com",
-                SenhaHash = hasher.Hash("super123"),
-                Funcao = Funcao.SuperAdmin
-            });
-            await db.SaveChangesAsync();
-        }
-        else if (super.TenantId != sistema.Id)
-        {
-            // Migra o super-admin que estava no tenant demo para o de sistema.
-            super.TenantId = sistema.Id;
+            db.Funcoes.AddRange(FuncoesParaTenant(t.Id));
             await db.SaveChangesAsync();
         }
     }

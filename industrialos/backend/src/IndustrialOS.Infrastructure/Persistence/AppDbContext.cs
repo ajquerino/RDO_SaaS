@@ -28,6 +28,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<Documento> Documentos => Set<Documento>();
     public DbSet<Auditoria> Auditorias => Set<Auditoria>();
     public DbSet<Plano> Planos => Set<Plano>();
+    public DbSet<RedefinicaoSenha> RedefinicoesSenha => Set<RedefinicaoSenha>();
     public DbSet<EventoDominio> EventosDominio => Set<EventoDominio>();
 
     public Guid? CurrentTenant => tenant.TenantId;
@@ -172,6 +173,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
         });
 
         b.Entity<Plano>(e => e.ToTable("planos"));
+
+        // Redefinição de senha — token de uso único (guarda só o hash). Sem filtro de tenant.
+        b.Entity<RedefinicaoSenha>(e =>
+        {
+            e.ToTable("redefinicoes_senha");
+            e.HasIndex(x => x.TokenHash);
+            e.HasIndex(x => x.UsuarioId);
+        });
 
         // ---- Outbox de eventos de domínio (arquitetura IA) — BaseEntity, filtro de tenant aplica ----
         b.Entity<EventoDominio>(e =>

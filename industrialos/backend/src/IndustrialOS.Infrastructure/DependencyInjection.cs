@@ -22,6 +22,10 @@ public static class DependencyInjection
         s.AddSingleton<Application.Pdf.IMedicaoPdf, Pdf.MedicaoPdf>();
         s.AddSingleton<Application.Storage.IStorage, Storage.R2Storage>();
 
+        // E-mail transacional (Resend/SendGrid por config; fallback de log em dev sem chave).
+        s.AddHttpClient();
+        s.AddScoped<Application.Email.IEmailSender, Email.EmailSender>();
+
         // IA: por ora só o stub por regras (sem rede/sem provedor). Para ligar IA de verdade,
         // criar ResumoIaLlm : IResumoIa (chamando Anthropic/OpenAI) e trocar este registro —
         // a interface (IResumoIa) e o contexto (RdoContexto) já estão prontos.

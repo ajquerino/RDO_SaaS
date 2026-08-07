@@ -1,16 +1,23 @@
+using System.Security.Cryptography;
+using System.Text;
 using IndustrialOS.Application.Auth;
+using IndustrialOS.Application.Email;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace IndustrialOS.Api.Controllers;
 
+public record EsqueciSenhaRequest(string Email);
+public record RedefinirSenhaRequest(string Token, string NovaSenha);
+
 [ApiController]
 [Route("api/v1/auth")]
-[EnableRateLimiting("auth")] // 10 req/min por IP em login/refresh
-public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt) : ControllerBase
+[EnableRateLimiting("auth")] // 10 req/min por IP em login/refresh/esqueci-senha/redefinir-senha
+public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt, IEmailSender email, IConfiguration cfg) : ControllerBase
 {
     /// <summary>Login por e-mail OU nome + senha. Pre-tenant: ignora o filtro de tenant.</summary>
     [HttpPost("login")]
@@ -55,4 +62,73 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
         var tokens = jwt.Gerar(user);
         return Ok(new { tokens.AccessToken, tokens.RefreshToken, tokens.ExpiraEm });
     }
+
+    /// <summary>Solicita redefinição de senha. Responde SEMPRE 200 neutro (não revela se o e-mail existe).</summary>
+    [HttpPost("esqueci-senha")]
+    public async Task<IActionResult> EsqueciSenha([FromBody] EsqueciSenhaRequest req)
+    {
+        const string neutra = "Se o e-mail existir, enviamos as instruções de redefinição.";
+        var alvo = req.Email?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(alvo)) return Ok(new { mensagem = neutra });
+
+        var user = await db.Usuarios.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == alvo && u.Ativo && u.DeletadoEm == null);
+        if (user is not null)
+        {
+            var token = GerarToken();
+            db.RedefinicoesSenha.Add(new RedefinicaoSenha
+            {
+                UsuarioId = user.Id,
+                TokenHash = Hash(token),
+                ExpiraEm = DateTime.UtcNow.AddHours(1),
+            });
+            await db.SaveChangesAsync();
+
+            var baseUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
+            var link = $"{baseUrl}/redefinir-senha/{token}";
+            var html = $"""
+                <p>Recebemos um pedido para redefinir sua senha no IndustrialOS.</p>
+                <p><a href="{link}">Clique aqui para criar uma nova senha</a> — o link expira em 1 hora.</p>
+                <p>Se não foi você, ignore este e-mail; nada muda.</p>
+                """;
+            // Falha de envio nunca altera a resposta (não vaza existência do e-mail).
+            try { await email.EnviarAsync(user.Email!, "Redefinição de senha — IndustrialOS", html); }
+            catch { /* logado no EmailSender */ }
+        }
+        return Ok(new { mensagem = neutra });
+    }
+
+    /// <summary>Redefine a senha a partir do token (uso único, 1h). Invalida os demais tokens do usuário.</summary>
+    [HttpPost("redefinir-senha")]
+    public async Task<IActionResult> RedefinirSenha([FromBody] RedefinirSenhaRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Token) || string.IsNullOrWhiteSpace(req.NovaSenha) || req.NovaSenha.Length < 6)
+            return BadRequest(new { erro = "Informe o token e uma senha com ao menos 6 caracteres." });
+
+        var hash = Hash(req.Token.Trim());
+        var pedido = await db.RedefinicoesSenha.FirstOrDefaultAsync(x => x.TokenHash == hash);
+        if (pedido is null || pedido.UsadoEm != null || pedido.ExpiraEm < DateTime.UtcNow)
+            return BadRequest(new { erro = "Link inválido ou expirado." });
+
+        var user = await db.Usuarios.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == pedido.UsuarioId);
+        if (user is null) return BadRequest(new { erro = "Link inválido ou expirado." });
+
+        user.SenhaHash = hasher.Hash(req.NovaSenha);
+        pedido.UsadoEm = DateTime.UtcNow;
+
+        // Invalida quaisquer outros tokens ativos do mesmo usuário.
+        await db.RedefinicoesSenha
+            .Where(x => x.UsuarioId == user.Id && x.UsadoEm == null && x.Id != pedido.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.UsadoEm, DateTime.UtcNow));
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Senha redefinida com sucesso." });
+    }
+
+    // Token aleatório de 32 bytes em base64url (só o hash é persistido).
+    private static string GerarToken() =>
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+    private static string Hash(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

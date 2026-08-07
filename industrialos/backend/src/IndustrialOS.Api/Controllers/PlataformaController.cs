@@ -205,6 +205,43 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         await db.SaveChangesAsync();
         return Ok(p);
     }
+
+    [HttpPut("planos/{id:guid}")]
+    public async Task<IActionResult> EditarPlano(Guid id, [FromBody] PlanoPlataformaRequest r)
+    {
+        if (string.IsNullOrWhiteSpace(r.Nome)) return BadRequest(new { erro = "Informe o nome do plano." });
+        var p = await db.Planos.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+
+        p.Nome = r.Nome.Trim();
+        p.LimiteObras = r.LimiteObras;
+        p.LimiteUsuarios = r.LimiteUsuarios;
+        p.PrecoMensal = r.PrecoMensal;
+
+        // Mantém o nome do plano (campo string legado) sincronizado nas empresas que o usam.
+        await db.Tenants.IgnoreQueryFilters().Where(t => t.PlanoId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Plano, p.Nome));
+
+        await db.SaveChangesAsync();
+        return Ok(p);
+    }
+
+    [HttpDelete("planos/{id:guid}")]
+    public async Task<IActionResult> ExcluirPlano(Guid id)
+    {
+        var p = await db.Planos.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null) return NotFound();
+
+        // Bloqueia se alguma empresa (não excluída) ainda usa o plano — evita plano órfão.
+        var emUso = await db.Tenants.IgnoreQueryFilters()
+            .CountAsync(t => t.PlanoId == id && t.DeletadoEm == null);
+        if (emUso > 0)
+            return Conflict(new { erro = $"{emUso} empresa(s) usam este plano. Troque o plano delas antes de excluir." });
+
+        db.Planos.Remove(p);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
     // TODO(billing): cobrança/checkout/gateway/trial NÃO implementados — dependem de decisão do usuário.
 
     // ---- Métricas globais ----

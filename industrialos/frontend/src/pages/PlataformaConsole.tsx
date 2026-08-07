@@ -215,6 +215,9 @@ function Planos() {
   const [usuarios, setUsuarios] = useState("");
   const [preco, setPreco] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
+
+  const invalidar = () => { qc.invalidateQueries({ queryKey: ["plataforma-planos"] }); qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); };
 
   const criar = useMutation({
     mutationFn: () => api<Plano>("/api/v1/plataforma/planos", {
@@ -222,6 +225,21 @@ function Planos() {
       body: JSON.stringify({ nome, limiteObras: obras ? Number(obras) : null, limiteUsuarios: usuarios ? Number(usuarios) : null, precoMensal: preco ? Number(preco) : null }),
     }),
     onSuccess: () => { setNome(""); setObras(""); setUsuarios(""); setPreco(""); setErro(null); qc.invalidateQueries({ queryKey: ["plataforma-planos"] }); },
+    onError: (e) => setErro((e as Error).message),
+  });
+
+  const editar = useMutation({
+    mutationFn: (p: Plano) => api<Plano>(`/api/v1/plataforma/planos/${p.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ nome: p.nome, limiteObras: p.limiteObras, limiteUsuarios: p.limiteUsuarios, precoMensal: p.precoMensal }),
+    }),
+    onSuccess: () => { setEditando(null); setErro(null); invalidar(); },
+    onError: (e) => setErro((e as Error).message),
+  });
+
+  const excluir = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/plataforma/planos/${id}`, { method: "DELETE" }),
+    onSuccess: () => { setErro(null); invalidar(); },
     onError: (e) => setErro((e as Error).message),
   });
 
@@ -241,13 +259,47 @@ function Planos() {
 
       <ul className="space-y-1">
         {planos?.map((p) => (
-          <li key={p.id} className="flex items-center justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm">
-            <span className="font-medium">{p.nome}</span>
-            <span className="text-slate-400">{p.limiteObras ?? "∞"} obras · {p.limiteUsuarios ?? "∞"} usuários · {brl(p.precoMensal)}/mês</span>
+          <li key={p.id} className="rounded-lg bg-slate-900 px-3 py-2 text-sm">
+            {editando === p.id ? (
+              <PlanoEdicao p={p} onSalvar={(np) => editar.mutate(np)} onCancelar={() => { setEditando(null); setErro(null); }} salvando={editar.isPending} />
+            ) : (
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{p.nome}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">{p.limiteObras ?? "∞"} obras · {p.limiteUsuarios ?? "∞"} usuários · {brl(p.precoMensal)}/mês</span>
+                  <button onClick={() => { setErro(null); setEditando(p.id); }} className="rounded-lg bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Editar</button>
+                  <button
+                    disabled={excluir.isPending}
+                    onClick={() => { if (confirm(`Excluir o plano "${p.nome}"?`)) excluir.mutate(p.id); }}
+                    className="rounded-lg bg-red-950 px-2 py-1 text-xs text-red-300 hover:bg-red-900 disabled:opacity-50"
+                  >Excluir</button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
         {planos?.length === 0 && <li className="text-slate-500 text-sm">Nenhum plano.</li>}
       </ul>
     </section>
+  );
+}
+
+// Edição inline de um plano (nome, limites e preço).
+function PlanoEdicao({ p, onSalvar, onCancelar, salvando }: { p: Plano; onSalvar: (p: Plano) => void; onCancelar: () => void; salvando: boolean }) {
+  const [nome, setNome] = useState(p.nome);
+  const [obras, setObras] = useState(p.limiteObras?.toString() ?? "");
+  const [usuarios, setUsuarios] = useState(p.limiteUsuarios?.toString() ?? "");
+  const [preco, setPreco] = useState(p.precoMensal?.toString() ?? "");
+  return (
+    <div className="grid gap-2 sm:grid-cols-5">
+      <input autoFocus className="rounded-lg bg-slate-800 px-2 py-1 text-sm" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" />
+      <input className="rounded-lg bg-slate-800 px-2 py-1 text-sm" type="number" value={obras} onChange={(e) => setObras(e.target.value)} placeholder="Obras (∞)" />
+      <input className="rounded-lg bg-slate-800 px-2 py-1 text-sm" type="number" value={usuarios} onChange={(e) => setUsuarios(e.target.value)} placeholder="Usuários (∞)" />
+      <input className="rounded-lg bg-slate-800 px-2 py-1 text-sm" type="number" step="0.01" value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="R$/mês" />
+      <div className="flex gap-1">
+        <button disabled={salvando || !nome.trim()} onClick={() => onSalvar({ ...p, nome: nome.trim(), limiteObras: obras ? Number(obras) : null, limiteUsuarios: usuarios ? Number(usuarios) : null, precoMensal: preco ? Number(preco) : null })} className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50">{salvando ? "…" : "Salvar"}</button>
+        <button disabled={salvando} onClick={onCancelar} className="rounded-lg bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Cancelar</button>
+      </div>
+    </div>
   );
 }

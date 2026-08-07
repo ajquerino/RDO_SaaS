@@ -7,12 +7,14 @@ import Dashboard from "./Dashboard";
 import Medicao from "./Medicao";
 import Documentos from "./Documentos";
 import SeloPlano from "./SeloPlano";
+import { useAssinatura } from "../lib/useAssinatura";
 
 const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
 export default function Obras() {
   const qc = useQueryClient();
   const gereObras = podeGerirObras(useAuth((s) => s.usuario)?.funcao);
+  const bloqueada = useAssinatura().bloqueada; // assinatura vencida => só leitura
   const [aberta, setAberta] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [contrato, setContrato] = useState("");
@@ -49,7 +51,7 @@ export default function Obras() {
         </div>
       )}
 
-      {gereObras && (
+      {gereObras && !bloqueada && (
       <form onSubmit={(e) => { e.preventDefault(); criar.mutate(); }} className="rounded-xl bg-slate-800 p-4 space-y-3">
         <h2 className="font-semibold">Nova obra</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -92,6 +94,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const funcao = useAuth((s) => s.usuario)?.funcao;
   const gereObras = podeGerirObras(funcao);
   const verValores = podeVerValores(funcao);
+  const bloqueada = useAssinatura().bloqueada; // assinatura vencida => só leitura
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
@@ -208,7 +211,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
       <div className="border-t border-slate-700 pt-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-slate-400">RDOs — {rdos?.length ?? 0}</span>
-          <button onClick={() => novoRdo.mutate()} disabled={novoRdo.isPending} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
+          <button onClick={() => novoRdo.mutate()} disabled={novoRdo.isPending || bloqueada} title={bloqueada ? "Assinatura vencida — acesso somente leitura" : undefined} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
             {novoRdo.isPending ? "Criando…" : "+ Novo RDO"}
           </button>
         </div>

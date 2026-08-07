@@ -5,6 +5,7 @@ import Clientes from "./Clientes";
 import Usuarios from "./Usuarios";
 import Equipamentos from "./Equipamentos";
 import Auditoria from "./Auditoria";
+import BannerAssinatura from "./BannerAssinatura";
 
 type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria";
 
@@ -32,6 +33,8 @@ export default function Home() {
         </div>
         <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
       </header>
+
+      <BannerAssinatura />
 
       <nav className="flex gap-1 border-b border-slate-800 px-4">
         {abas.filter((a) => a.visivel).map((a) => (

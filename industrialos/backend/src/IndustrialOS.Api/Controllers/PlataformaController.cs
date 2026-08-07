@@ -1,5 +1,6 @@
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Domain.Entities;
+using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,7 @@ public record EditarEmpresaRequest(string Nome, string? Cnpj);
 public record StatusTenantRequest(string Status);
 public record PlanoPlataformaRequest(string Nome, int? LimiteObras, int? LimiteUsuarios, decimal? PrecoMensal);
 public record PlanoTenantRequest(Guid? PlanoId);
+public record AssinaturaUpsertRequest(Guid? PlanoId, DateOnly? VencimentoEm, DateOnly? TrialAte);
 
 /// <summary>Console de PLATAFORMA (dono do SaaS). ÚNICO ponto de acesso cross-tenant, e SOMENTE aqui:
 /// todo acesso a dados de empresas usa <c>.IgnoreQueryFilters()</c> EXPLÍCITO + [Authorize(SuperAdmin)].
@@ -181,6 +183,14 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         };
         db.Usuarios.Add(admin);
 
+        // Assinatura inicial em trial de 14 dias (uma por tenant; tenant novo => idempotente).
+        db.Assinaturas.Add(new Assinatura
+        {
+            TenantId = tenant.Id,
+            PlanoId = null,
+            TrialAte = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14),
+        });
+
         await db.SaveChangesAsync();
         return Ok(new { tenantId = tenant.Id, tenant.Nome, adminId = admin.Id, admin.Email });
     }
@@ -256,5 +266,76 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
             .CountAsync(u => u.DeletadoEm == null && u.Funcao != Funcao.SuperAdmin);
 
         return Ok(new { totalTenants, tenantsAtivos, totalObras, totalRdos, totalUsuarios });
+    }
+
+    // ---- Assinaturas / inadimplência (interino: gerido à mão até integrar gateway) ----
+    [HttpGet("assinaturas")]
+    public async Task<IActionResult> Assinaturas()
+    {
+        var tenants = await db.Tenants.Where(t => !t.EhSistema && t.DeletadoEm == null)
+            .OrderBy(t => t.Nome).ToListAsync();
+        var mapa = (await db.Assinaturas.IgnoreQueryFilters().ToListAsync()).ToDictionary(a => a.TenantId);
+        var planos = await db.Planos.IgnoreQueryFilters().ToDictionaryAsync(p => p.Id);
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        return Ok(tenants.Select(t =>
+        {
+            var a = mapa.GetValueOrDefault(t.Id);
+            var e = AssinaturaCalculo.Avaliar(a, hoje);
+            var pid = a?.PlanoId ?? t.PlanoId;
+            var planoNome = pid is Guid g && planos.TryGetValue(g, out var p) ? p.Nome : null;
+            return new
+            {
+                t.Id, t.Nome,
+                estado = e.Estado.ToString(),
+                bloqueada = e.Bloqueada,
+                vencimentoEm = a?.VencimentoEm,
+                trialAte = a?.TrialAte,
+                diasParaVencer = e.DiasParaVencer,
+                diasAtraso = e.DiasAtraso,
+                planoId = pid,
+                planoNome,
+            };
+        }));
+    }
+
+    // Upsert manual da assinatura (define/atualiza planoId, vencimento e trial). Substitui os 3 campos.
+    [HttpPut("tenants/{id:guid}/assinatura")]
+    public async Task<IActionResult> UpsertAssinatura(Guid id, [FromBody] AssinaturaUpsertRequest req)
+    {
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == id);
+        if (a is null) { a = new Assinatura { TenantId = id }; db.Assinaturas.Add(a); }
+
+        a.PlanoId = req.PlanoId;
+        a.VencimentoEm = req.VencimentoEm;
+        a.TrialAte = req.TrialAte;
+        a.Cancelada = false;
+        await db.SaveChangesAsync();
+
+        var e = AssinaturaCalculo.Avaliar(a, DateOnly.FromDateTime(DateTime.UtcNow));
+        return Ok(new { a.TenantId, a.PlanoId, a.VencimentoEm, a.TrialAte, estado = e.Estado.ToString(), bloqueada = e.Bloqueada });
+    }
+
+    // "Marcar pago": empurra o vencimento +1 mês (se null, hoje+1 mês), sai do trial e reativa.
+    [HttpPost("tenants/{id:guid}/assinatura/pagar")]
+    public async Task<IActionResult> MarcarPago(Guid id)
+    {
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == id);
+        if (a is null) { a = new Assinatura { TenantId = id, PlanoId = t.PlanoId }; db.Assinaturas.Add(a); }
+
+        var baseData = a.VencimentoEm ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        a.VencimentoEm = baseData.AddMonths(1);
+        a.TrialAte = null;      // pagar encerra o trial
+        a.Cancelada = false;
+        await db.SaveChangesAsync();
+
+        var e = AssinaturaCalculo.Avaliar(a, DateOnly.FromDateTime(DateTime.UtcNow));
+        return Ok(new { a.TenantId, a.VencimentoEm, estado = e.Estado.ToString(), bloqueada = e.Bloqueada });
     }
 }

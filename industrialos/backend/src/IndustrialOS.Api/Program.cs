@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using IndustrialOS.Api.Common;
+using IndustrialOS.Api.Filtros;
 using IndustrialOS.Api.Middleware;
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Application.Common;
@@ -57,7 +58,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(o => o.Filters.Add<SomenteLeituraInadimplenteFilter>())
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

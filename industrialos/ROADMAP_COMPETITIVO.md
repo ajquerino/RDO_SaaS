@@ -56,8 +56,42 @@ Contabilidade, obrigações fiscais (SPED/NF), contas a pagar, folha. **Não con
 
 ---
 
-## Épicos futuros (a preencher conforme estudamos os concorrentes 2–5)
-- **Épico 2** — origem: estudo Vobi (IA + SINAPI). _a definir._
+## Épico 2 — "IA Industrial" (origem: estudo Vobi → FLANQUEAR a IA / IGNORAR SINAPI)
+
+**Tese:** neutralizar a narrativa "agentes de IA" da Vobi entregando IA que resolve dor
+*industrial* — não chatbot genérico. Aproveita infra pronta: `IResumoIa` (abstração) +
+`ResumoIaRegras` (stub) + `RdoContextoBuilder` + outbox `EventoDominio`. Esforço **M**.
+NÃO integrar SINAPI (mercado residencial, cliente errado).
+
+### Fase 1 — Resumo diário do RDO com LLM real (P/M) 🎯 primeiro
+- [ ] `Infrastructure/Ia/ResumoIaLlm : IResumoIa` chamando LLM; trocar o registro no DI
+      (`AddScoped<IResumoIa, ResumoIaLlm>`). Contrato e `RdoContexto` já existem.
+- [ ] Config de provedor/chave por env (sem hardcode); fallback pro stub `ResumoIaRegras` se sem chave.
+- [ ] Já existe o botão "Resumo do dia" no `Rdo.tsx` e o endpoint `GET /rdos/{id}/resumo` — só liga a IA real.
+- **Aceite:** resumo em linguagem natural do RDO (efetivo, HH, avanço, paralisações, retrabalho) via LLM.
+
+### Fase 2 — Previsão de atraso (M)
+- [ ] Serviço que cruza **curva S** (previsto x realizado), **Pareto de paralisações** e **retrabalho**
+      → sinal de risco de prazo por obra/frente. Começar por **regras** (determinístico, explicável),
+      LLM só para redigir a explicação.
+- [ ] Expor no Dashboard como farol/《alerta》 com o "porquê" (quais paralisações/desvios puxaram o risco).
+- **Aceite:** obra com curva realizada abaixo da prevista + paralisações recorrentes acende alerta com causa.
+
+### Fase 3 — Alerta de produtividade/risco por frente (M)
+- [ ] HH realizado vs. previsto por frente/função (dados já em `DashboardController.produtividade`).
+- [ ] Consumir o outbox `EventoDominio` (`rdo_finalizado`) via worker para gerar alertas assíncronos.
+- **Aceite:** desvio de produtividade por frente notifica gestor sem ele abrir o dashboard.
+
+### Fora de escopo (decisão do estudo)
+Integração SINAPI. Orçamento residencial. Chatbot genérico sem contexto de obra.
+
+### Lição de posicionamento (não é código)
+Comunicar publicamente como **"IA para obra industrial"** — a Vobi vence hoje na narrativa, não
+na dor do nosso cliente. Marketing importa tanto quanto a feature.
+
+---
+
+## Épicos futuros (a preencher conforme estudamos os concorrentes 3–5)
 - **Épico 3** — origem: estudo Mobuss (base instalada). _a definir._
 - **Épico 4** — origem: estudo Procore/PlanRadar (escala/ecossistema). _a definir._
 - **Épico 5** — origem: estudo Produttivo/Kartado (simplicidade/onboarding). _a definir._

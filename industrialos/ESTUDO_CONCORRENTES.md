@@ -21,7 +21,7 @@ Falta: **offline-first**. Time enxuto, preço acessível, pt-BR.
 | # | Concorrente | Foco real | Vetor onde ele ganha | Decisão |
 |---|---|---|---|---|
 | 1 | **Sienge** (Softplan) | ERP construção civil / incorporação | Financeiro/ERP robusto + marca | **Flanquear** ✅ |
-| 2 | Vobi | Gestão de obras + IA (civil/arquitetura) | Marketing, IA, integração SINAPI | _a estudar_ |
+| 2 | **Vobi** | Gestão de obras + IA (civil/arquitetura) | Marketing, IA, integração SINAPI | **Flanquear (IA) + Ignorar (SINAPI)** ✅ |
 | 3 | Mobuss Construção | Mobilidade em obra (civil) | Base instalada grande | _a estudar_ |
 | 4 | Procore / Autodesk / PlanRadar | Global, construction management | Escala, ecossistema, capital | _a estudar_ |
 | 5 | Produttivo / Kartado / Diário de Obra | RDO/checklist genérico | Simplicidade, já no ar | _a estudar_ |
@@ -72,8 +72,46 @@ dado de campo industrial" que *alimenta* o financeiro, inclusive o do próprio S
 
 ---
 
-## 2. Vobi — vetor: IA + integração SINAPI
-_A estudar. Rodar o prompt de estudo (abaixo) com CONCORRENTE=Vobi._
+## 2. Vobi — vetor: IA (agentes) + SINAPI + narrativa de marketing ✅
+
+### Raio-X do vetor
+- Público real: **arquitetos, designers, reforma, construtoras/empreiteiras civis/residenciais**.
+  +70 mil profissionais. Preço a partir de **R$ 180/mês** — SMB, ticket baixo, self-service.
+- **SINAPI**: orçamento por composições da tabela SINAPI (custos de referência de obra civil/
+  residencial por estado/mês/desoneração) — coração do produto.
+- **IA**: posicionamento "único com Agentes de IA do Brasil" — forte como **narrativa de marketing**;
+  capacidade concreta a confirmar.
+- Ciclo civil completo: orçamento → cronograma → compras → diário → medição → financeiro + IA.
+
+### Por que ele ganha
+**MARKETING/NARRATIVA + produto no nicho civil/residencial.** Ponto-chave: **SINAPI é irrelevante
+pro nosso cliente** — montagem industrial orça por HH, Kg, tonelada, diâmetro de solda, m². A IA é
+o que importa e hoje é mais bandeira do que fosso técnico.
+
+### Custo de igualar
+- SINAPI → esforço **P**, mas **não vale** (cliente errado, distração).
+- IA → **plumbing já pronto** (`EventoDominio` outbox + `IResumoIa` stub). IA real de nicho = **M**,
+  e larga na frente com IA *industrial*, não genérica.
+
+### Jogada de flanco (divide o vetor)
+- **SINAPI → IGNORAR** e virar argumento: "SINAPI é preço de obra residencial; indústria mede HH/tonelada".
+- **IA → FLANQUEAR igualando com profundidade de nicho** sobre o outbox existente:
+  - Resumo diário do RDO (trocar `ResumoIaRegras` → `ResumoIaLlm`).
+  - Previsão de atraso (curva S + Pareto de paralisações + retrabalho).
+  - Alerta de produtividade/risco (HH real vs. previsto por frente).
+  - Copiar a **lição de marketing**: comunicar como "IA para obra industrial".
+
+### Prova pro cliente
+- "IA que resume o RDO e aponta risco de atraso lendo sua curva S e paralisações — não chatbot genérico."
+- "A gente não te faz orçar montagem com tabela residencial (SINAPI): HH, tonelada, solda, m²."
+- "Mesmo ciclo da Vobi (orçamento→medição→financeiro), mas nativo pra caldeiraria/tubulação/EPC."
+
+### DECISÃO → **FLANQUEAR (IA) + IGNORAR (SINAPI)**
+Não perseguir SINAPI (mercado errado). Ligar **IA real de nicho** sobre o plumbing já existente —
+maior ROI (infra pronta + diferencial único). Vobi não é concorrente direto (mira arquiteto/reforma);
+a ameaça real é **narrativa** — neutralizada com IA que resolve a dor industrial.
+
+### → Item de roadmap: Épico "IA Industrial" (ver `ROADMAP_COMPETITIVO.md`)
 
 ## 3. Mobuss Construção — vetor: base instalada
 _A estudar._

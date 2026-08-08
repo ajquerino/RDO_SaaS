@@ -5,8 +5,9 @@ import Clientes from "./Clientes";
 import Usuarios from "./Usuarios";
 import Equipamentos from "./Equipamentos";
 import Auditoria from "./Auditoria";
+import Configuracoes from "./Configuracoes";
 
-type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria";
+type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria" | "config";
 
 export default function Home() {
   const { usuario, logout } = useAuth();
@@ -21,6 +22,7 @@ export default function Home() {
     { id: "equipamentos", rotulo: "Equipamentos", visivel: gereObras },
     { id: "usuarios", rotulo: "Usuários", visivel: gereUsuarios },
     { id: "auditoria", rotulo: "Auditoria", visivel: ehAdmin },
+    { id: "config", rotulo: "Configurações", visivel: gereUsuarios },
   ];
 
   return (
@@ -51,6 +53,7 @@ export default function Home() {
         {aba === "equipamentos" && gereObras && <Equipamentos />}
         {aba === "usuarios" && gereUsuarios && <Usuarios />}
         {aba === "auditoria" && ehAdmin && <Auditoria />}
+        {aba === "config" && gereUsuarios && <Configuracoes />}
       </section>
     </main>
   );

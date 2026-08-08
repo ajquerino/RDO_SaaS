@@ -41,17 +41,16 @@ public class HhSemanalController(AppDbContext db) : ControllerBase
             return new HhSemanalCalculo.DiaEntrada(r.Data, ini, alm, ret, ter, fer, r.Efetivo.Sum(e => e.Quantidade));
         });
 
-        var res = HhSemanalCalculo.Calcular(dias);
+        // Regra de HE do tenant atual (filtro global aplica); sem config salva => defaults.
+        var regra = await db.RegrasHoraExtra.FirstOrDefaultAsync();
+        var res = HhSemanalCalculo.Calcular(dias, regra);
 
         return Ok(new
         {
             de = segunda,
             ate = domingo,
             normalHH = res.NormalHH,
-            extra50HH = res.Extra50HH,
-            extra70HH = res.Extra70HH,
-            fds100HH = res.Fds100HH,
-            fds150HH = res.Fds150HH,
+            extras = res.Extras.Select(f => new { percentual = f.Percentual, horas = f.Horas }),
             totalHH = res.TotalHH,
             porDia = res.PorDia.Select(d => new
             {
@@ -59,10 +58,7 @@ public class HhSemanalController(AppDbContext db) : ControllerBase
                 diaTipo = d.DiaTipo,
                 nPessoas = d.NPessoas,
                 normalHH = d.NormalHH,
-                extra50HH = d.Extra50HH,
-                extra70HH = d.Extra70HH,
-                fds100HH = d.Fds100HH,
-                fds150HH = d.Fds150HH,
+                extras = d.Extras.Select(f => new { percentual = f.Percentual, horas = f.Horas }),
             }),
         });
     }

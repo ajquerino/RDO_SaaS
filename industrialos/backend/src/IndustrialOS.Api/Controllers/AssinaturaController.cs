@@ -1,5 +1,6 @@
 using IndustrialOS.Application.Common;
 using IndustrialOS.Application.Pagamento;
+using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -7,6 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace IndustrialOS.Api.Controllers;
+
+public record EscolherPlanoRequest(Guid PlanoId);
 
 /// <summary>Status da assinatura do tenant atual — alimenta o banner e o modo somente-leitura do front.</summary>
 [ApiController]
@@ -70,5 +73,31 @@ public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbaca
             vencimentoEm = e.VencimentoEm,
             planoNome,
         });
+    }
+
+    /// <summary>Catálogo de planos para a empresa escolher ao assinar/pagar (só leitura).</summary>
+    [HttpGet("planos")]
+    public async Task<IActionResult> Planos() =>
+        Ok(await db.Planos.OrderBy(p => p.PrecoMensal ?? 0)
+            .Select(p => new { p.Id, p.Nome, p.LimiteObras, p.LimiteUsuarios, p.PrecoMensal })
+            .ToListAsync());
+
+    /// <summary>A empresa escolhe/troca o próprio plano (upsert do PlanoId na Assinatura do tenant).
+    /// Rota livre no filtro, então uma empresa bloqueada consegue escolher antes de pagar.</summary>
+    [HttpPost("escolher-plano")]
+    public async Task<IActionResult> EscolherPlano([FromBody] EscolherPlanoRequest req)
+    {
+        if (tenant.TenantId is not Guid tid)
+            return BadRequest(new { erro = "Sem empresa no contexto." });
+
+        var plano = await db.Planos.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == req.PlanoId);
+        if (plano is null) return BadRequest(new { erro = "Plano não encontrado." });
+
+        var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tid);
+        if (a is null) { a = new Assinatura { TenantId = tid }; db.Assinaturas.Add(a); }
+        a.PlanoId = plano.Id;
+        await db.SaveChangesAsync();
+
+        return Ok(new { a.PlanoId, planoNome = plano.Nome });
     }
 }

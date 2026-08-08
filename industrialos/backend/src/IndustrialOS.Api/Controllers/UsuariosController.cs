@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Infrastructure.Persistence;
@@ -46,5 +47,24 @@ public class UsuariosController(AppDbContext db, IPasswordHasher hasher) : Contr
         var aviso = Common.UsoPlanoCalc.AvisoUsuarios(uso.NUsuarios, uso.LimiteUsuarios, uso.Plano);
         return CreatedAtAction(nameof(Listar), new { id = user.Id },
             new { usuario = new UsuarioDto(user.Id, user.Nome, user.Email, user.Funcao.ToString()), aviso });
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Gestor,Admin")]
+    public async Task<IActionResult> Excluir(Guid id)
+    {
+        var meuId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"), out var uid) ? uid : Guid.Empty;
+        if (id == meuId)
+            return BadRequest(new { erro = "Você não pode excluir seu próprio usuário." });
+
+        // Filtro global já garante: só usuários da própria empresa e não deletados.
+        var user = await db.Usuarios.FirstOrDefaultAsync(u => u.Id == id);
+        if (user is null) return NotFound();
+        if (user.Funcao == Funcao.SuperAdmin)
+            return BadRequest(new { erro = "Não é possível excluir esse usuário." });
+
+        user.DeletadoEm = DateTime.UtcNow; // soft delete (Usuario é BaseEntity)
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 }

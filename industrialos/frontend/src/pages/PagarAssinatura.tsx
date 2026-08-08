@@ -9,7 +9,6 @@ const brl = (v?: number | null) => (v == null ? "" : v.toLocaleString("pt-BR", {
  *  Bloqueada — /assinatura é rota livre. Permite trocar de plano antes de pagar. */
 export default function PagarAssinatura({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const [copiado, setCopiado] = useState(false);
   const [confirmado, setConfirmado] = useState(false);
   const [escolhendo, setEscolhendo] = useState<boolean | null>(null); // null = decidindo (status carregando)
   const fechouRef = useRef(false);
@@ -52,20 +51,13 @@ export default function PagarAssinatura({ onClose }: { onClose: () => void }) {
     }
   }, [status, confirmado, qc, onClose]);
 
-  const copiar = async () => {
-    const code = cobrar.data?.brCode;
-    if (!code) return;
-    try { await navigator.clipboard.writeText(code); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
-    catch { /* clipboard indisponível — o usuário copia manualmente do campo */ }
-  };
-
   const trocarPlano = () => { cobrar.reset(); cobrouRef.current = false; setEscolhendo(true); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl bg-slate-800 p-5 text-slate-100 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Assinatura (PIX)</h2>
+          <h2 className="text-lg font-semibold">Assinatura</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-200" aria-label="Fechar">✕</button>
         </div>
 
@@ -109,16 +101,13 @@ export default function PagarAssinatura({ onClose }: { onClose: () => void }) {
               <span className="text-slate-400">Plano <span className="text-slate-100">{status?.planoNome}</span>{cobrar.data.valor != null ? ` · ${brl(cobrar.data.valor)}` : ""}</span>
               <button onClick={trocarPlano} className="text-xs text-sky-400 hover:text-sky-300">Trocar</button>
             </div>
-            {cobrar.data.brCodeBase64 && (
-              <img src={`data:image/png;base64,${cobrar.data.brCodeBase64}`} alt="QR Code PIX" className="mx-auto h-56 w-56 rounded-lg bg-white p-2" />
+            {cobrar.data.url && (
+              <a href={cobrar.data.url} target="_blank" rel="noopener noreferrer"
+                 className="block w-full rounded-lg bg-emerald-600 py-3 text-center font-semibold hover:bg-emerald-500">
+                Ir para o pagamento
+              </a>
             )}
-            {cobrar.data.brCode && (
-              <div className="flex items-center gap-2">
-                <input readOnly value={cobrar.data.brCode} className="min-w-0 flex-1 truncate rounded-lg bg-slate-900 px-3 py-2 text-xs" />
-                <button onClick={copiar} className="shrink-0 rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold hover:bg-sky-500">{copiado ? "Copiado!" : "Copiar"}</button>
-              </div>
-            )}
-            <p className="text-center text-xs text-slate-400">Escaneie no app do banco ou copie o código. Após o pagamento, o acesso é liberado automaticamente.</p>
+            <p className="text-center text-xs text-slate-400">Você abre a página segura do AbacatePay (PIX, cartão ou boleto). Após o pagamento, o acesso é liberado automaticamente.</p>
             <p className="text-center text-xs text-slate-500">Aguardando pagamento…</p>
           </div>
         ) : null}

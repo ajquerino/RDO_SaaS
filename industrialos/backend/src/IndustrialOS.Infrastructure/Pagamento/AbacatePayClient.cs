@@ -16,7 +16,7 @@ public class AbacatePayClient : IAbacatePay
     private readonly ILogger<AbacatePayClient> _log;
     private readonly string _baseUrl;
     private readonly string? _apiKey;
-    private readonly string _appUrl;
+    private readonly string[] _metodos;
 
     public AbacatePayClient(HttpClient http, IConfiguration cfg, ILogger<AbacatePayClient> log)
     {
@@ -24,64 +24,63 @@ public class AbacatePayClient : IAbacatePay
         _log = log;
         _baseUrl = (cfg["AbacatePay:BaseUrl"] ?? "https://api.abacatepay.com/v2").TrimEnd('/');
         _apiKey = cfg["AbacatePay:ApiKey"];
-        _appUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
         WebhookSecret = cfg["AbacatePay:WebhookSecret"];
+        // Métodos habilitados na conta AbacatePay. CARD exige a conta verificada (KYC) — por isso o
+        // default é PIX,BOLETO; adicione CARD em AbacatePay:Methods quando o cartão estiver liberado.
+        _metodos = (cfg["AbacatePay:Methods"] ?? "PIX,BOLETO")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(m => m.ToUpperInvariant()).ToArray();
     }
 
     public bool Configurado => !string.IsNullOrWhiteSpace(_apiKey);
     public string? WebhookSecret { get; }
 
-    public async Task<CobrancaPix> CriarCobrancaPixAsync(long valorCentavos, string externalId, string descricao,
-        string? nomePagador, string? emailPagador, string? docPagador, CancellationToken ct = default)
+    private async Task<JsonElement> PostAsync(string path, object corpo, CancellationToken ct)
     {
-        if (!Configurado) throw new InvalidOperationException("AbacatePay não configurado (AbacatePay:ApiKey vazio).");
-
-        // taxId: CNPJ/CPF do pagador (só dígitos). Fallback = CPF de teste válido (checksum ok) p/ devmode.
-        var taxId = new string((docPagador ?? "").Where(char.IsDigit).ToArray());
-        if (taxId.Length is not (11 or 14)) taxId = "11144477735";
-
-        // v2 /transparents/create (PIX): body é união discriminada por "method"; os dados vão em "data"
-        // e o PIX (como o BOLETO) exige data.customer. externalId no topo volta no webhook p/ mapear o tenant.
-        var corpo = new Dictionary<string, object?>
-        {
-            ["method"] = "PIX",
-            ["description"] = descricao,
-            ["data"] = new Dictionary<string, object?>
-            {
-                ["amount"] = valorCentavos,
-                ["externalId"] = externalId,   // DENTRO de data — senão volta null no webhook
-                ["expiresIn"] = 86400,
-                ["customer"] = new Dictionary<string, object?>
-                {
-                    ["name"] = nomePagador ?? "Cliente",
-                    ["email"] = emailPagador ?? "financeiro@industrialos.com.br",
-                    ["cellphone"] = "(11) 40028922",
-                    ["taxId"] = taxId,
-                },
-            },
-        };
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/transparents/create");
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}{path}");
         req.Headers.Add("Authorization", $"Bearer {_apiKey}");
         req.Content = new StringContent(JsonSerializer.Serialize(corpo), Encoding.UTF8, "application/json");
-
         using var resp = await _http.SendAsync(req, ct);
         var texto = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
         {
-            _log.LogError("AbacatePay cobrança falhou ({Status}): {Body}", (int)resp.StatusCode, texto);
+            _log.LogError("AbacatePay {Path} falhou ({Status}): {Body}", path, (int)resp.StatusCode, texto);
             throw new InvalidOperationException($"AbacatePay retornou {(int)resp.StatusCode}.");
         }
+        var doc = JsonDocument.Parse(texto);
+        return doc.RootElement.TryGetProperty("data", out var d) ? d.Clone() : doc.RootElement.Clone();
+    }
 
-        // Resposta padrão { data, error, success }. Leitura defensiva.
-        using var doc = JsonDocument.Parse(texto);
-        var data = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+    public async Task<string> CriarProdutoAsync(string nome, string? descricao, long precoCentavos,
+        string externalId, CancellationToken ct = default)
+    {
+        if (!Configurado) throw new InvalidOperationException("AbacatePay não configurado.");
+        var data = await PostAsync("/products/create", new Dictionary<string, object?>
+        {
+            ["name"] = nome,
+            ["description"] = descricao ?? nome,
+            ["price"] = precoCentavos,
+            ["currency"] = "BRL",
+            ["externalId"] = externalId,
+        }, ct);
+        return data.GetProperty("id").GetString()!;
+    }
+
+    public async Task<CobrancaPix> CriarCheckoutAsync(string produtoId, string externalId, string retornoUrl,
+        CancellationToken ct = default)
+    {
+        if (!Configurado) throw new InvalidOperationException("AbacatePay não configurado.");
+        var data = await PostAsync("/checkouts/create", new Dictionary<string, object?>
+        {
+            ["items"] = new[] { new Dictionary<string, object?> { ["id"] = produtoId, ["quantity"] = 1 } },
+            ["methods"] = _metodos,
+            ["externalId"] = externalId,
+            ["frequency"] = "ONE_TIME",
+            ["returnUrl"] = retornoUrl,
+            ["completionUrl"] = retornoUrl,
+        }, ct);
         string S(string k) => data.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
-        return new CobrancaPix(
-            Id: S("id"),
-            BrCode: data.TryGetProperty("brCode", out var bc) ? bc.GetString() : null,
-            BrCodeBase64: data.TryGetProperty("brCodeBase64", out var bq) ? bq.GetString() : null,
-            Status: S("status"));
+        return new CobrancaPix(Id: S("id"), Url: S("url"), Status: S("status"));
     }
 
     public bool VerificarAssinaturaWebhook(string corpoCru, string? assinaturaHeader)

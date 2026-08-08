@@ -9,4 +9,5 @@ public class Plano
     public int? LimiteObras { get; set; }
     public int? LimiteUsuarios { get; set; }
     public decimal? PrecoMensal { get; set; }
+    public string? ProvedorProdutoId { get; set; }   // id do produto no AbacatePay (criado sob demanda)
 }

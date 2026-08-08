@@ -15,11 +15,13 @@ public record EscolherPlanoRequest(Guid PlanoId);
 [ApiController]
 [Route("api/v1/assinatura")]
 [Authorize]
-public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbacatePay abacate) : ControllerBase
+public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbacatePay abacate,
+    Microsoft.Extensions.Configuration.IConfiguration cfg) : ControllerBase
 {
-    /// <summary>Gera uma cobrança PIX do plano da empresa (via AbacatePay). Fica em /assinatura
-    /// (rota livre no filtro), então uma empresa BLOQUEADA ainda consegue pagar. Ao pagar, o
-    /// webhook regulariza o vencimento e o bloqueio some.</summary>
+    /// <summary>Gera um CHECKOUT hospedado do AbacatePay (PIX/cartão/boleto) do plano da empresa e
+    /// devolve a URL de pagamento. Fica em /assinatura (rota livre), então empresa BLOQUEADA consegue
+    /// pagar. Ao pagar, o webhook regulariza o vencimento e o bloqueio some. Cria o "produto" do plano
+    /// no AbacatePay sob demanda (uma vez por plano; id guardado em Plano.ProvedorProdutoId).</summary>
     [HttpPost("cobrar")]
     public async Task<IActionResult> Cobrar()
     {
@@ -29,20 +31,25 @@ public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbaca
             return BadRequest(new { erro = "Sem empresa no contexto." });
 
         var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tid);
-        var preco = a?.PlanoId is Guid pid
-            ? await db.Planos.IgnoreQueryFilters().Where(p => p.Id == pid).Select(p => p.PrecoMensal).FirstOrDefaultAsync()
-            : null;
-        if (preco is not > 0)
-            return BadRequest(new { erro = "Nenhum plano com preço definido para esta empresa." });
+        var plano = a?.PlanoId is Guid pid
+            ? await db.Planos.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == pid) : null;
+        if (plano?.PrecoMensal is not > 0)
+            return BadRequest(new { erro = "Escolha um plano com preço definido antes de pagar." });
 
-        var empresa = await db.Empresas.IgnoreQueryFilters().Where(e => e.TenantId == tid).Select(e => e.RazaoSocial).FirstOrDefaultAsync();
-        var cnpj = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == tid).Select(t => t.Cnpj).FirstOrDefaultAsync();
-        var centavos = (long)Math.Round(preco.Value * 100m);
         try
         {
-            var cobranca = await abacate.CriarCobrancaPixAsync(centavos, tid.ToString(),
-                $"IndustrialOS — assinatura mensal ({empresa})", empresa, null, cnpj);
-            return Ok(new { cobranca.Id, cobranca.BrCode, cobranca.BrCodeBase64, cobranca.Status, valor = preco });
+            // Garante o produto do plano no AbacatePay (cria uma vez, guarda o id).
+            if (string.IsNullOrEmpty(plano.ProvedorProdutoId))
+            {
+                var centavos = (long)Math.Round(plano.PrecoMensal.Value * 100m);
+                plano.ProvedorProdutoId = await abacate.CriarProdutoAsync(
+                    $"IndustrialOS — {plano.Nome}", "Assinatura mensal IndustrialOS", centavos, $"plano-{plano.Id}");
+                await db.SaveChangesAsync();
+            }
+
+            var retorno = $"{(cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/')}/assinatura";
+            var checkout = await abacate.CriarCheckoutAsync(plano.ProvedorProdutoId!, tid.ToString(), retorno);
+            return Ok(new { checkout.Id, checkout.Url, checkout.Status, valor = plano.PrecoMensal, plano = plano.Nome });
         }
         catch (InvalidOperationException ex)
         {

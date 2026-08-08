@@ -58,10 +58,10 @@ export type AssinaturaStatus = {
 // Cobrança PIX gerada pelo backend (POST /assinatura/cobrar). brCodeBase64 = PNG do QR sem prefixo data:.
 export type CobrancaPix = {
   id: string;
-  brCode?: string | null;         // copia-e-cola PIX
-  brCodeBase64?: string | null;   // PNG do QR (base64, sem "data:image/png;base64,")
+  url?: string | null;            // página de checkout hospedada (PIX/cartão/boleto)
   status: string;
   valor?: number | null;
+  plano?: string | null;
 };
 
 /** upload multipart (sem Content-Type manual — o browser define o boundary). */

@@ -27,8 +27,12 @@ public static class AssinaturaCalculo
         if (a.TrialAte is { } trial && hoje <= trial)
             return new Resultado(EstadoAssinatura.Trial, null, null, null, false, a.VencimentoEm);
 
-        // Sem vencimento definido => considera em dia (nada a cobrar ainda).
-        if (a.VencimentoEm is not { } venc)
+        // Trial acabou (não caiu no check acima) ou nunca houve trial. O vencimento efetivo é
+        // VencimentoEm; na sua ausência, cai pro fim do trial (TrialAte) — assim o TRIAL FECHA:
+        // passa a Vencido e, depois da tolerância, Bloqueada. Sem NENHUM dos dois (empresa legada
+        // sem cobrança nem trial) => EmDia (default seguro, não trava quem nunca teve cobrança).
+        var vencOpt = a.VencimentoEm ?? a.TrialAte;
+        if (vencOpt is not { } venc)
             return new Resultado(EstadoAssinatura.EmDia, null, null, null, false, null);
 
         int diasParaVencer = venc.DayNumber - hoje.DayNumber;

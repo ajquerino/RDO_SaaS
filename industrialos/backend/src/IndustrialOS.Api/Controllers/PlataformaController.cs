@@ -320,4 +320,26 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher, IEmai
         var e = AssinaturaCalculo.Avaliar(a, DateOnly.FromDateTime(DateTime.UtcNow));
         return Ok(new { a.TenantId, a.VencimentoEm, estado = e.Estado.ToString(), bloqueada = e.Bloqueada });
     }
+
+    // "Estender trial +14 dias": empurra o fim do trial pra frente. Se já expirou, parte de hoje
+    // (senão +14 a partir de uma data passada continuaria vencido). Reativa (Cancelada=false) — assim
+    // uma empresa vencida/bloqueada volta a Trial na hora. Cria a assinatura se ainda não existir.
+    [HttpPost("tenants/{id:guid}/trial/estender")]
+    public async Task<IActionResult> EstenderTrial(Guid id)
+    {
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == id);
+        if (a is null) { a = new Assinatura { TenantId = id, PlanoId = t.PlanoId }; db.Assinaturas.Add(a); }
+
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+        var baseData = (a.TrialAte is { } tr && tr > hoje) ? tr : hoje;
+        a.TrialAte = baseData.AddDays(14);
+        a.Cancelada = false;
+        await db.SaveChangesAsync();
+
+        var e = AssinaturaCalculo.Avaliar(a, hoje);
+        return Ok(new { a.TenantId, a.TrialAte, estado = e.Estado.ToString(), bloqueada = e.Bloqueada });
+    }
 }

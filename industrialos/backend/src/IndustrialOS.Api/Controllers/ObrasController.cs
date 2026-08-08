@@ -125,6 +125,42 @@ public class ObrasController(AppDbContext db, ICronogramaImport import) : Contro
         return Ok(item);
     }
 
+    [HttpPut("{id:guid}/itens/{itemId:guid}")]
+    [Authorize(Roles = "Planejador,Gestor,Admin")]
+    public async Task<IActionResult> EditarItem(Guid id, Guid itemId, [FromBody] ItemRequest r)
+    {
+        var item = await db.ObraItens.FirstOrDefaultAsync(i => i.Id == itemId && i.ObraId == id);
+        if (item is null) return NotFound();
+
+        item.Descricao = r.Descricao;
+        item.Unidade = r.Unidade;
+        item.QtdPrevista = r.QtdPrevista;
+        item.HhPrevisto = r.HhPrevisto;
+        item.Disciplina = r.Disciplina;
+        item.DataInicio = r.DataInicio;
+        item.DataFim = r.DataFim;
+        // Valor só é alterado por quem pode ver R$ — evita zerar o valor sem querer para os demais papéis.
+        if (PodeVerValores) item.Valor = r.Valor;
+
+        await db.SaveChangesAsync();
+        if (!PodeVerValores) item.Valor = null; // não vaza R$ na resposta
+        return Ok(item);
+    }
+
+    [HttpDelete("{id:guid}/itens/{itemId:guid}")]
+    [Authorize(Roles = "Planejador,Gestor,Admin")]
+    public async Task<IActionResult> ExcluirItem(Guid id, Guid itemId)
+    {
+        var item = await db.ObraItens.FirstOrDefaultAsync(i => i.Id == itemId && i.ObraId == id);
+        if (item is null) return NotFound();
+
+        // ObraItem é BaseEntity: soft delete (DeletadoEm) — some da EAP pelo filtro global, sem quebrar
+        // referências de RDO/Medição (ObraItemId) e reversível pelo banco.
+        item.DeletadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/itens/importar")]
     [Authorize(Roles = "Planejador,Gestor,Admin")]
     public async Task<IActionResult> Importar(Guid id, IFormFile file)

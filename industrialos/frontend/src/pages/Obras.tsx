@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiUpload, type Cliente, type ObraDetalhe, type ObraLista, type RdoLista } from "../lib/api";
+import { api, apiUpload, type Cliente, type Obra, type ObraDetalhe, type ObraLista, type RdoLista } from "../lib/api";
 import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/auth";
 import Rdo from "./Rdo";
 import Dashboard from "./Dashboard";
@@ -99,6 +99,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
+  const [editandoObra, setEditandoObra] = useState(false);
   const [sub, setSub] = useState<"detalhe" | "dashboard" | "hh" | "medicao" | "documentos">("detalhe");
 
   const { data } = useQuery({ queryKey: ["obra", obraId], queryFn: () => api<ObraDetalhe>(`/api/v1/obras/${obraId}`) });
@@ -109,6 +110,24 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const novoRdo = useMutation({
     mutationFn: () => api<{ id: string }>(`/api/v1/obras/${obraId}/rdos`, { method: "POST", body: JSON.stringify({ data: hoje }) }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["rdos", obraId] }); setRdoEditando(r.id); },
+  });
+
+  const excluirRdo = useMutation({
+    mutationFn: (rdoId: string) => api(`/api/v1/rdos/${rdoId}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["rdos", obraId] }),
+    onError: (e) => setMsg((e as Error).message),
+  });
+
+  const editarObra = useMutation({
+    mutationFn: (r: Record<string, unknown>) => api(`/api/v1/obras/${obraId}`, { method: "PUT", body: JSON.stringify(r) }),
+    onSuccess: () => { setEditandoObra(false); qc.invalidateQueries({ queryKey: ["obra", obraId] }); qc.invalidateQueries({ queryKey: ["obras"] }); },
+    onError: (e) => setMsg((e as Error).message),
+  });
+
+  const excluirObra = useMutation({
+    mutationFn: () => api(`/api/v1/obras/${obraId}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["obras"] }); },
+    onError: (e) => setMsg((e as Error).message),
   });
 
   const importar = useMutation({
@@ -155,6 +174,25 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
       {sub === "medicao" && gereObras && <Medicao obraId={obraId} />}
 
       {sub === "detalhe" && <>
+      {gereObras && data?.obra && (
+        <div className="rounded-lg bg-slate-900/40 p-2">
+          {editandoObra ? (
+            <EditarObraForm obra={data.obra} salvando={editarObra.isPending} onSalvar={(r) => editarObra.mutate(r)} onCancelar={() => setEditandoObra(false)} />
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-slate-400">Obra: <span className="text-slate-200">{data.obra.nome}</span></span>
+              <div className="flex gap-1">
+                <button onClick={() => setEditandoObra(true)} disabled={bloqueada} className="rounded-lg bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600 disabled:opacity-50">Editar obra</button>
+                <button
+                  disabled={excluirObra.isPending || bloqueada}
+                  onClick={() => { if (confirm(`Excluir a obra "${data.obra.nome}"?\n\nEla some das listas (exclusão reversível pelo banco). RDOs e itens ficam guardados.`)) excluirObra.mutate(); }}
+                  className="rounded-lg bg-red-950 px-2 py-1 text-xs text-red-300 hover:bg-red-900 disabled:opacity-50"
+                >Excluir obra</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {gereObras && (
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xlsm" className="text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white" />
@@ -219,17 +257,72 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
         </div>
         <ul className="space-y-1">
           {rdos?.map((r) => (
-            <li key={r.id}>
-              <button onClick={() => setRdoEditando(r.id)} className="w-full flex justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm text-left hover:bg-slate-700">
+            <li key={r.id} className="flex items-stretch gap-1">
+              <button onClick={() => setRdoEditando(r.id)} className="flex-1 flex justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm text-left hover:bg-slate-700">
                 <span>RDO {r.numero}{r.revisao > 0 ? ` rev.${r.revisao}` : ""} · {r.data}</span>
                 <span className="text-slate-400">{r.status}</span>
               </button>
+              {gereObras && r.status !== "Aprovado" && (
+                <button
+                  disabled={excluirRdo.isPending || bloqueada}
+                  title={bloqueada ? "Assinatura vencida — somente leitura" : "Excluir RDO"}
+                  onClick={() => { if (confirm(`Excluir o RDO ${r.numero}${r.revisao > 0 ? ` rev.${r.revisao}` : ""}? (exclusão reversível)`)) excluirRdo.mutate(r.id); }}
+                  className="rounded-lg bg-red-950 px-2 text-xs text-red-300 hover:bg-red-900 disabled:opacity-50"
+                >Excluir</button>
+              )}
             </li>
           ))}
           {rdos?.length === 0 && <li className="text-slate-500 text-sm">Nenhum RDO ainda.</li>}
         </ul>
       </div>
       </>}
+    </div>
+  );
+}
+
+// Edição dos campos principais da obra. Preserva os campos não editados aqui
+// (frenteServico, responsavelPadrao, GPS, cliente) reenviando os valores atuais.
+const STATUS_OBRA = ["Planejada", "Andamento", "Paralisada", "Concluida"] as const;
+function EditarObraForm({ obra, salvando, onSalvar, onCancelar }:
+  { obra: Obra; salvando: boolean; onSalvar: (r: Record<string, unknown>) => void; onCancelar: () => void }) {
+  const [nome, setNome] = useState(obra.nome);
+  const [contrato, setContrato] = useState(obra.contrato ?? "");
+  const [ordemServico, setOrdemServico] = useState(obra.ordemServico ?? "");
+  const [local, setLocal] = useState(obra.local ?? "");
+  const [prazo, setPrazo] = useState(obra.prazoPagamento ?? "");
+  const [status, setStatus] = useState(obra.status);
+  const [dataInicio, setDataInicio] = useState(obra.dataInicio ?? "");
+  const [dataFim, setDataFim] = useState(obra.dataFim ?? "");
+
+  const salvar = () => onSalvar({
+    clienteId: obra.clienteId ?? null, empresaId: obra.empresaId ?? null,
+    nome: nome.trim(), contrato: contrato || null, ordemServico: ordemServico || null,
+    local: local || null, frenteServico: obra.frenteServico ?? null,
+    responsavelPadrao: obra.responsavelPadrao ?? null,
+    dataInicio: dataInicio || null, dataFim: dataFim || null,
+    prazoPagamento: prazo || null, status,
+    latitude: obra.latitude ?? null, longitude: obra.longitude ?? null,
+  });
+
+  const inp = "rounded-lg bg-slate-900 px-2 py-1 text-sm";
+  return (
+    <div className="space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <input className={inp} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome da obra *" />
+        <input className={inp} value={contrato} onChange={(e) => setContrato(e.target.value)} placeholder="Contrato" />
+        <input className={inp} value={ordemServico} onChange={(e) => setOrdemServico(e.target.value)} placeholder="Ordem de serviço" />
+        <input className={inp} value={local} onChange={(e) => setLocal(e.target.value)} placeholder="Local" />
+        <input className={inp} value={prazo} onChange={(e) => setPrazo(e.target.value)} placeholder="Prazo pagamento (ex.: 21/42)" />
+        <select className={inp} value={status} onChange={(e) => setStatus(e.target.value)}>
+          {STATUS_OBRA.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <label className="text-xs text-slate-400">Início<input type="date" className={`${inp} w-full`} value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} /></label>
+        <label className="text-xs text-slate-400">Fim<input type="date" className={`${inp} w-full`} value={dataFim} onChange={(e) => setDataFim(e.target.value)} /></label>
+      </div>
+      <div className="flex gap-1">
+        <button disabled={salvando || !nome.trim()} onClick={salvar} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50">{salvando ? "Salvando…" : "Salvar obra"}</button>
+        <button disabled={salvando} onClick={onCancelar} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600">Cancelar</button>
+      </div>
     </div>
   );
 }

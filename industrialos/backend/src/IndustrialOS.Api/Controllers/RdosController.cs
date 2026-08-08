@@ -108,6 +108,22 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         return Ok(new { rdo.Id, Status = rdo.Status.ToString() });
     }
 
+    [HttpDelete("rdos/{id:guid}")]
+    [Authorize(Roles = "Planejador,Gestor,Admin")]
+    public async Task<IActionResult> Excluir(Guid id)
+    {
+        var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
+        if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
+        // RDO aprovado é registro fechado: não se exclui (o caminho é "solicitar revisão").
+        if (rdo.Status == RdoStatus.Aprovado)
+            return Conflict(new { erro = "RDO aprovado nao pode ser excluido." });
+
+        // Soft delete (reversível): some das listas, mas fica no banco. Auditado automaticamente.
+        rdo.DeletadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     [HttpPost("rdos/{id:guid}/finalizar")]
     public async Task<IActionResult> Finalizar(Guid id)
     {

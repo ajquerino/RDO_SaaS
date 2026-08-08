@@ -100,6 +100,8 @@ export type ObraItem = {
 export type Obra = {
   id: string; nome: string; contrato?: string; ordemServico?: string; local?: string;
   clienteId?: string; prazoPagamento?: string; status: string; dataInicio?: string; dataFim?: string;
+  empresaId?: string | null; frenteServico?: string | null; responsavelPadrao?: string | null;
+  latitude?: number | null; longitude?: number | null;
 };
 export type ObraDetalhe = { obra: Obra; itens: ObraItem[] };
 

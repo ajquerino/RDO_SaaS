@@ -19,28 +19,30 @@ public class JwtService(IConfiguration config) : IJwtService
     {
         var expira = DateTime.UtcNow.AddHours(8);
         var creds = new SigningCredentials(new SymmetricSecurityKey(Key), SecurityAlgorithms.HmacSha256);
+        var sessao = u.SessaoAtual?.ToString() ?? "";
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, u.Id.ToString()),
             new Claim("tenant_id", u.TenantId.ToString()),
             new Claim("funcao", u.Funcao.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, u.Email ?? ""),
-            new Claim(JwtRegisteredClaimNames.Name, u.Nome)
+            new Claim(JwtRegisteredClaimNames.Name, u.Nome),
+            new Claim("sessao", sessao)   // 1 sessão por usuário: token com sessão diferente é rejeitado
         };
         var jwt = new JwtSecurityToken(Issuer, Audience, claims,
             expires: expira, signingCredentials: creds);
         var access = new JwtSecurityTokenHandler().WriteToken(jwt);
 
-        // Refresh: JWT longo assinado, com o usuarioId no sub e escopo "refresh".
+        // Refresh: JWT longo assinado, com o usuarioId no sub, escopo "refresh" e a sessão.
         var refreshJwt = new JwtSecurityToken(Issuer, Audience,
-            [new Claim(JwtRegisteredClaimNames.Sub, u.Id.ToString()), new Claim("scope", "refresh")],
+            [new Claim(JwtRegisteredClaimNames.Sub, u.Id.ToString()), new Claim("scope", "refresh"), new Claim("sessao", sessao)],
             expires: DateTime.UtcNow.AddDays(30), signingCredentials: creds);
         var refresh = new JwtSecurityTokenHandler().WriteToken(refreshJwt);
 
         return new TokenPair(access, refresh, expira);
     }
 
-    public Guid? ValidarRefresh(string refreshToken)
+    public (Guid? Id, Guid? Sessao) ValidarRefresh(string refreshToken)
     {
         try
         {
@@ -51,9 +53,13 @@ public class JwtService(IConfiguration config) : IJwtService
                 IssuerSigningKey = new SymmetricSecurityKey(Key),
                 ValidateLifetime = true
             }, out _);
-            if (p.FindFirst("scope")?.Value != "refresh") return null;
-            return Guid.TryParse(p.FindFirst(JwtRegisteredClaimNames.Sub)?.Value, out var id) ? id : null;
+            if (p.FindFirst("scope")?.Value != "refresh") return (null, null);
+            // "sub" pode vir remapeado para NameIdentifier dependendo do inbound claim map.
+            var subStr = p.FindFirst(JwtRegisteredClaimNames.Sub)?.Value ?? p.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            Guid? id = Guid.TryParse(subStr, out var i) ? i : null;
+            Guid? sessao = Guid.TryParse(p.FindFirst("sessao")?.Value, out var s) ? s : null;
+            return (id, sessao);
         }
-        catch { return null; }
+        catch { return (null, null); }
     }
 }

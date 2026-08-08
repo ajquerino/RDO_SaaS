@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -30,6 +32,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // Usuário atual (para auditoria) + cache em memória + ProblemDetails.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUsuarioAtual, UsuarioAtual>();
+builder.Services.AddScoped<SessaoService>(); // 1 sessão por usuário (enforcement no JwtBearer)
 builder.Services.AddMemoryCache();
 builder.Services.AddProblemDetails();
 
@@ -45,16 +48,45 @@ builder.Services.AddRateLimiter(o =>
 // JWT: mapeia o claim "funcao" como Role para habilitar [Authorize(Roles=...)].
 var jwt = builder.Configuration.GetSection("Jwt");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o => o.TokenValidationParameters = new TokenValidationParameters
+    .AddJwtBearer(o =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = jwt["Issuer"],
-        ValidAudience = jwt["Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!)),
-        RoleClaimType = "funcao"
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwt["Issuer"],
+            ValidAudience = jwt["Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!)),
+            RoleClaimType = "funcao"
+        };
+        // 1 sessão por usuário: rejeita tokens cuja sessão não bate com a vigente (kick imediato).
+        o.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async ctx =>
+            {
+                var sub = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? ctx.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                if (!Guid.TryParse(sub, out var userId)) { ctx.Fail("sem sub"); return; }
+
+                Guid.TryParse(ctx.Principal?.FindFirst("sessao")?.Value, out var sessaoToken);
+                var sessoes = ctx.HttpContext.RequestServices.GetRequiredService<SessaoService>();
+                var atual = await sessoes.SessaoAtualAsync(userId);
+                if (atual is null || atual != sessaoToken)
+                {
+                    ctx.HttpContext.Items["sessaoEncerrada"] = true;
+                    ctx.Fail("sessao encerrada em outro dispositivo");
+                }
+            },
+            OnChallenge = ctx =>
+            {
+                // Sinal p/ o front separar "sessão encerrada" de "token expirado".
+                if (ctx.HttpContext.Items.ContainsKey("sessaoEncerrada"))
+                    ctx.Response.Headers["X-Sessao"] = "encerrada";
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -63,7 +95,8 @@ builder.Services.AddControllers(o => o.Filters.Add<SomenteLeituraInadimplenteFil
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()));
+    p.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin()
+        .WithExposedHeaders("X-Sessao"))); // front precisa ler esse header no 401 cross-origin
 builder.Services.AddHealthChecks()
     .AddNpgSql(builder.Configuration["ConnectionStrings:Postgres"]!, name: "postgres");
 

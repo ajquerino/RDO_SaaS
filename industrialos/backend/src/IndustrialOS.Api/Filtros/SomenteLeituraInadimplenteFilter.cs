@@ -15,7 +15,7 @@ public class SomenteLeituraInadimplenteFilter(AppDbContext db, ITenantContext te
 {
     // Rotas sempre livres: login, console do super-admin e o próprio status da assinatura.
     private static readonly string[] RotasLivres =
-        ["/api/v1/auth", "/api/v1/plataforma", "/api/v1/assinatura"];
+        ["/api/v1/auth", "/api/v1/plataforma", "/api/v1/assinatura", "/api/v1/webhooks"];
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {

@@ -26,6 +26,9 @@ public static class DependencyInjection
         s.AddHttpClient();
         s.AddScoped<Application.Email.IEmailSender, Email.EmailSender>();
 
+        // Gateway de pagamento AbacatePay (PIX). Sem chave => Configurado=false (não chama a rede).
+        s.AddHttpClient<Application.Pagamento.IAbacatePay, Pagamento.AbacatePayClient>();
+
         // IA: por ora só o stub por regras (sem rede/sem provedor). Para ligar IA de verdade,
         // criar ResumoIaLlm : IResumoIa (chamando Anthropic/OpenAI) e trocar este registro —
         // a interface (IResumoIa) e o contexto (RdoContexto) já estão prontos.

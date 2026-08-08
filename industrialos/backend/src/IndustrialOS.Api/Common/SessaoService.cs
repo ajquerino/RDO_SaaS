@@ -25,4 +25,17 @@ public class SessaoService(AppDbContext db, IMemoryCache cache)
     /// <summary>Grava a sessão vigente no cache (chamado no login para invalidar a anterior na hora).</summary>
     public void Atualizar(Guid userId, Guid? sessao) =>
         cache.Set(Chave(userId), sessao, TimeSpan.FromSeconds(30));
+
+    /// <summary>Lê a sessão DIRETO do banco (autoritativo) e reidrata o cache. Usado quando o cache
+    /// diverge do token, para não derrubar por cache velho — ex.: logo após o login, se uma leitura
+    /// concorrente do <see cref="SessaoAtualAsync"/> tiver repovoado o cache com a sessão antiga.</summary>
+    public async Task<Guid?> RevalidarNoBancoAsync(Guid userId)
+    {
+        var sessao = await db.Usuarios.IgnoreQueryFilters()
+            .Where(u => u.Id == userId)
+            .Select(u => u.SessaoAtual)
+            .FirstOrDefaultAsync();
+        cache.Set(Chave(userId), sessao, TimeSpan.FromSeconds(30)); // corrige o cache velho
+        return sessao;
+    }
 }

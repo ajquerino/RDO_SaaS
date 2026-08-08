@@ -45,11 +45,11 @@ public class AbacatePayClient : IAbacatePay
         var corpo = new Dictionary<string, object?>
         {
             ["method"] = "PIX",
-            ["externalId"] = externalId,
             ["description"] = descricao,
             ["data"] = new Dictionary<string, object?>
             {
                 ["amount"] = valorCentavos,
+                ["externalId"] = externalId,   // DENTRO de data — senão volta null no webhook
                 ["expiresIn"] = 86400,
                 ["customer"] = new Dictionary<string, object?>
                 {

@@ -56,7 +56,9 @@ public class WebhooksController(AppDbContext db, IAbacatePay abacate, IMemoryCac
         }
 
         var data = raiz.TryGetProperty("data", out var d) ? d : default;
-        var externalId = data.ValueKind == JsonValueKind.Object ? Str(data, "externalId") : null;
+        // externalId pode vir em data.externalId OU aninhado (ex.: data.<obj>.externalId).
+        var externalId = ExtrairExternalId(data);
+        if (externalId is null) log.LogInformation("Webhook '{Evento}' corpo bruto p/ diagnostico: {Corpo}", evento, corpo);
         if (!Guid.TryParse(externalId, out var tenantId))
         {
             log.LogInformation("Webhook AbacatePay '{Evento}' sem externalId de tenant — ignorado.", evento);
@@ -85,6 +87,17 @@ public class WebhooksController(AppDbContext db, IAbacatePay abacate, IMemoryCac
 
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
+    }
+
+    // Procura o externalId em data.externalId ou um nível abaixo (data.<obj>.externalId).
+    private static string? ExtrairExternalId(JsonElement data)
+    {
+        if (data.ValueKind != JsonValueKind.Object) return null;
+        if (Str(data, "externalId") is { } id) return id;
+        foreach (var prop in data.EnumerateObject())
+            if (prop.Value.ValueKind == JsonValueKind.Object && Str(prop.Value, "externalId") is { } nested)
+                return nested;
+        return null;
     }
 
     private static string? Str(JsonElement e, string prop) =>

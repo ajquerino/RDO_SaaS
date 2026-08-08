@@ -1,5 +1,6 @@
 using IndustrialOS.Api.Common;
 using IndustrialOS.Application.Auth;
+using IndustrialOS.Application.Common;
 using IndustrialOS.Application.Email;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
@@ -25,8 +26,46 @@ public record AssinaturaUpsertRequest(Guid? PlanoId, DateOnly? VencimentoEm, Dat
 [ApiController]
 [Route("api/v1/plataforma")]
 [Authorize(Roles = "SuperAdmin")]
-public class PlataformaController(AppDbContext db, IPasswordHasher hasher, IEmailSender emailSender, IConfiguration cfg, ILogger<PlataformaController> logger) : ControllerBase
+public class PlataformaController(AppDbContext db, IPasswordHasher hasher, IEmailSender emailSender, IConfiguration cfg, ILogger<PlataformaController> logger, IJwtService jwt, IUsuarioAtual atual) : ControllerBase
 {
+    // ---- "Acessar como" (modo suporte) ----
+    // Emite um JWT COMO o admin da empresa para o super-admin ver/agir remoto. SENSÍVEL: só super-admin,
+    // curto (1h), AUDITADO. O token tem funcao=Admin (não SuperAdmin) => [Authorize(SuperAdmin)] deste
+    // controller já BLOQUEIA o token de suporte de voltar a /plataforma. O tenant_id do admin mantém o
+    // filtro global de tenant valendo (o super passa a enxergar SÓ os dados daquela empresa).
+    [HttpPost("tenants/{id:guid}/acessar")]
+    public async Task<IActionResult> AcessarComo(Guid id)
+    {
+        var t = await db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == id && x.DeletadoEm == null);
+        if (t is null || t.EhSistema) return NotFound();
+
+        // Admin principal (o mais antigo) da empresa, ativo e não deletado.
+        var admin = await db.Usuarios.IgnoreQueryFilters()
+            .Where(u => u.TenantId == id && u.Funcao == Funcao.Admin && u.Ativo && u.DeletadoEm == null)
+            .OrderBy(u => u.CriadoEm).FirstOrDefaultAsync();
+        if (admin is null) return BadRequest(new { erro = "Empresa sem administrador ativo para acesso de suporte." });
+
+        var superId = atual.UsuarioId;
+
+        // Auditoria EXPLÍCITA (não é CRUD de entidade auditada): registra o acesso de suporte.
+        db.Auditorias.Add(new Auditoria
+        {
+            TenantId = id,
+            UsuarioId = superId,
+            Acao = "acesso_suporte",
+            Entidade = "Tenant",
+            EntidadeId = id,
+            Detalhe = $"{{\"empresa\":\"{t.Nome}\",\"comoAdminId\":\"{admin.Id}\"}}"
+        });
+        await db.SaveChangesAsync();
+
+        var token = jwt.GerarSuporte(admin, superId ?? Guid.Empty);
+        logger.LogInformation("Acesso de suporte: super {Super} -> empresa {Empresa} ({Tenant}) como admin {Admin}",
+            superId, t.Nome, id, admin.Id);
+        return Ok(new { accessToken = token, empresaNome = t.Nome });
+    }
+
+
     // ---- Empresas (tenants) ----
     [HttpGet("tenants")]
     public async Task<IActionResult> Tenants()

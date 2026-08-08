@@ -66,6 +66,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             OnTokenValidated = async ctx =>
             {
+                // MODO SUPORTE: token emitido pelo super-admin para agir COMO o admin de uma empresa.
+                // É curto (1h), auditado na emissão e NÃO participa da sessão única — não derruba a sessão
+                // real do admin nem é derrubado por ela. Por isso pula o enforcement de sessão aqui.
+                if (ctx.Principal?.FindFirst("suporte") is not null) return;
+
                 var sub = ctx.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
                           ?? ctx.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
                 if (!Guid.TryParse(sub, out var userId)) { ctx.Fail("sem sub"); return; }

@@ -23,5 +23,24 @@ export default function App() {
   if (!usuario) return <Login />;
   // Super-admin (dono do SaaS) usa o Console de Plataforma — não as telas de tenant.
   if (usuario.funcao === "SuperAdmin") return <PlataformaConsole />;
-  return <Home />;
+  // Demais papéis => telas de tenant. Em modo suporte, o banner fixo fica por cima de qualquer tela.
+  return <><SuporteBanner /><Home /></>;
+}
+
+/** Barra fixa no topo quando o super-admin está "acessando como" uma empresa (modo suporte). */
+function SuporteBanner() {
+  const suporte = useAuth((s) => s.suporte);
+  const sairSuporte = useAuth((s) => s.sairSuporte);
+  if (!suporte) return null;
+  return (
+    <>
+      <div className="fixed inset-x-0 top-0 z-[60] flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-amber-950 shadow">
+        <span>Modo suporte — <strong>{suporte.empresaNome}</strong></span>
+        <button onClick={sairSuporte} className="rounded bg-amber-950/20 px-2 py-0.5 text-xs font-semibold hover:bg-amber-950/30">
+          Sair do modo suporte
+        </button>
+      </div>
+      <div className="h-9" aria-hidden /> {/* espaçador: evita a barra fixa cobrir o topo da tela */}
+    </>
+  );
 }

@@ -96,6 +96,9 @@ export default function Login() {
           >
             Esqueci minha senha
           </button>
+          <a href="/criar-conta" className="block text-center text-sm text-sky-400 hover:text-sky-300">
+            Criar conta grátis
+          </a>
         </form>
       ) : (
         <form onSubmit={esqueci} className="w-full max-w-sm space-y-4">

@@ -3,6 +3,7 @@ using System;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace IndustrialOS.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807235656_RedefinicaoSenha")]
+    partial class RedefinicaoSenha
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,47 +24,6 @@ namespace IndustrialOS.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("IndustrialOS.Domain.Entities.Assinatura", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("Cancelada")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("PlanoId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ProvedorAssinaturaId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProvedorCustomerId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ProvedorNome")
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateOnly?>("TrialAte")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly?>("VencimentoEm")
-                        .HasColumnType("date");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId")
-                        .IsUnique();
-
-                    b.ToTable("assinaturas", (string)null);
-                });
 
             modelBuilder.Entity("IndustrialOS.Domain.Entities.Auditoria", b =>
                 {

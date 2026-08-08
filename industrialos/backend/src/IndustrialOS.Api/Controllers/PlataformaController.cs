@@ -332,7 +332,10 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == id);
         if (a is null) { a = new Assinatura { TenantId = id, PlanoId = t.PlanoId }; db.Assinaturas.Add(a); }
 
-        var baseData = a.VencimentoEm ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        // Pagar sempre REGULARIZA: o próximo vencimento vai pro futuro. Se estava atrasada,
+        // parte de hoje (senão +1 mês do venc antigo poderia continuar no passado = bloqueada).
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+        var baseData = (a.VencimentoEm is { } v && v > hoje) ? v : hoje;
         a.VencimentoEm = baseData.AddMonths(1);
         a.TrialAte = null;      // pagar encerra o trial
         a.Cancelada = false;

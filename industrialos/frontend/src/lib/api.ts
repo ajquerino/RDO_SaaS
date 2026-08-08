@@ -23,6 +23,13 @@ export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 2
     if (res.status === 204) return undefined as T;
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
+      // Sessão derrubada por login em outro dispositivo: sai na hora (diferente do 401 de expiração).
+      if (res.status === 401 && (res.headers.get("X-Sessao") === "encerrada" || body.code === "sessao_encerrada")) {
+        localStorage.clear();
+        localStorage.setItem("authMsg", "Sua conta foi acessada em outro dispositivo.");
+        if (location.pathname !== "/") location.assign("/"); else location.reload();
+        throw new Error("Sua conta foi acessada em outro dispositivo.");
+      }
       throw new Error(body.erro ?? body.title ?? `Erro ${res.status}`);
     }
     return res.json() as Promise<T>;

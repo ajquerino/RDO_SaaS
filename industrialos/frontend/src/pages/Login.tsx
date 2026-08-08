@@ -13,7 +13,12 @@ export default function Login() {
   const login = useAuth((s) => s.login);
   const [emailOuNome, setEmailOuNome] = useState("admin@demo.com");
   const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
+  // Mostra (uma vez) a mensagem de "sessão encerrada em outro dispositivo", se o api.ts a deixou.
+  const [erro, setErro] = useState<string | null>(() => {
+    const m = localStorage.getItem("authMsg");
+    if (m) { localStorage.removeItem("authMsg"); return m; }
+    return null;
+  });
   const [carregando, setCarregando] = useState(false);
   const [modo, setModo] = useState<"login" | "esqueci">("login");
   const [emailEsq, setEmailEsq] = useState("");

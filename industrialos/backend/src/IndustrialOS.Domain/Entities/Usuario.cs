@@ -13,6 +13,10 @@ public class Usuario : BaseEntity
     public bool Ativo { get; set; } = true;
     public DateTime? UltimoLogin { get; set; }
 
+    /// <summary>Sessão ativa atual. Cada login gera um novo Guid; tokens com sessão diferente são
+    /// rejeitados (1 dispositivo por usuário — login novo derruba o anterior).</summary>
+    public Guid? SessaoAtual { get; set; }
+
     // LGPD (Sprint 9)
     public bool ConsentimentoLgpd { get; set; }
     public DateTime? ConsentimentoEm { get; set; }

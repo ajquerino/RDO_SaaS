@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using IndustrialOS.Api.Common;
 using IndustrialOS.Application.Auth;
 using IndustrialOS.Application.Email;
 using IndustrialOS.Domain.Entities;
@@ -17,7 +18,7 @@ public record RedefinirSenhaRequest(string Token, string NovaSenha);
 [ApiController]
 [Route("api/v1/auth")]
 [EnableRateLimiting("auth")] // 10 req/min por IP em login/refresh/esqueci-senha/redefinir-senha
-public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt, IEmailSender email, IConfiguration cfg) : ControllerBase
+public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt, IEmailSender email, IConfiguration cfg, SessaoService sessoes) : ControllerBase
 {
     /// <summary>Login por e-mail OU nome + senha. Pre-tenant: ignora o filtro de tenant.</summary>
     [HttpPost("login")]
@@ -41,10 +42,13 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
                 return StatusCode(403, new { erro = "Empresa suspensa. Contate o suporte." });
         }
 
-        var tokens = jwt.Gerar(user);
+        // 1 sessão por usuário: novo login gera nova sessão (derruba o dispositivo anterior).
+        user.SessaoAtual = Guid.NewGuid();
         user.UltimoLogin = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        sessoes.Atualizar(user.Id, user.SessaoAtual); // kick imediato do dispositivo antigo
 
+        var tokens = jwt.Gerar(user); // lê user.SessaoAtual já atualizado
         return Ok(new LoginResponse(tokens.AccessToken, tokens.RefreshToken, tokens.ExpiraEm,
             new UsuarioDto(user.Id, user.Nome, user.Email, user.Funcao.ToString())));
     }
@@ -52,13 +56,18 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest req)
     {
-        var id = jwt.ValidarRefresh(req.RefreshToken);
+        var (id, sessaoToken) = jwt.ValidarRefresh(req.RefreshToken);
         if (id is null) return Unauthorized(new { erro = "Refresh token invalido." });
 
         var user = await db.Usuarios.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Id == id && u.Ativo && u.DeletadoEm == null);
         if (user is null) return Unauthorized();
 
+        // A sessão do token precisa bater com a sessão vigente; senão, foi derrubada por outro login.
+        if (user.SessaoAtual is null || user.SessaoAtual != sessaoToken)
+            return Unauthorized(new { erro = "Sessão encerrada em outro dispositivo.", code = "sessao_encerrada" });
+
+        // Refresh NÃO cria sessão nova — regenera mantendo a mesma SessaoAtual.
         var tokens = jwt.Gerar(user);
         return Ok(new { tokens.AccessToken, tokens.RefreshToken, tokens.ExpiraEm });
     }

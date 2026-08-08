@@ -30,6 +30,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
     public DbSet<Plano> Planos => Set<Plano>();
     public DbSet<RedefinicaoSenha> RedefinicoesSenha => Set<RedefinicaoSenha>();
     public DbSet<Assinatura> Assinaturas => Set<Assinatura>();
+    public DbSet<RegraHoraExtra> RegrasHoraExtra => Set<RegraHoraExtra>();
     public DbSet<EventoDominio> EventosDominio => Set<EventoDominio>();
 
     public Guid? CurrentTenant => tenant.TenantId;
@@ -188,6 +189,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext
         {
             e.ToTable("assinaturas");
             e.HasIndex(x => x.TenantId).IsUnique();
+        });
+
+        // Regras de hora-extra por empresa (BaseEntity => filtro global aplica). Uma por tenant
+        // (garantido no upsert do ConfiguracoesController; índice só p/ busca).
+        b.Entity<RegraHoraExtra>(e =>
+        {
+            e.ToTable("regras_hora_extra");
+            e.HasIndex(x => x.TenantId);
         });
 
         // ---- Outbox de eventos de domínio (arquitetura IA) — BaseEntity, filtro de tenant aplica ----

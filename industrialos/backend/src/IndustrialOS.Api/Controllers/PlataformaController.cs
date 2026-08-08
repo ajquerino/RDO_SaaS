@@ -1,10 +1,14 @@
+using IndustrialOS.Api.Common;
 using IndustrialOS.Application.Auth;
+using IndustrialOS.Application.Email;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace IndustrialOS.Api.Controllers;
 
@@ -21,7 +25,7 @@ public record AssinaturaUpsertRequest(Guid? PlanoId, DateOnly? VencimentoEm, Dat
 [ApiController]
 [Route("api/v1/plataforma")]
 [Authorize(Roles = "SuperAdmin")]
-public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : ControllerBase
+public class PlataformaController(AppDbContext db, IPasswordHasher hasher, IEmailSender emailSender, IConfiguration cfg, ILogger<PlataformaController> logger) : ControllerBase
 {
     // ---- Empresas (tenants) ----
     [HttpGet("tenants")]
@@ -159,42 +163,14 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
         if (await db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email))
             return Conflict(new { erro = "Já existe um usuário com este e-mail." });
 
-        var tenant = new Tenant
-        {
-            Nome = r.NomeEmpresa.Trim(),
-            Cnpj = string.IsNullOrWhiteSpace(r.Cnpj) ? null : r.Cnpj.Trim(),
-            Plano = "trial",
-            Status = "ativo",
-        };
-        db.Tenants.Add(tenant);
+        // Criação compartilhada (tenant + empresa + admin + assinatura trial 14d + 61 funções).
+        var (tenant, admin) = await OnboardingHelper.CriarEmpresaAsync(
+            db, hasher, r.NomeEmpresa, r.Cnpj, r.AdminNome, r.AdminEmail, r.AdminSenha);
 
-        // TenantId setado explicitamente com o novo tenant (o Stamp só preenche quando vazio).
-        var empresa = new Empresa { TenantId = tenant.Id, RazaoSocial = r.NomeEmpresa.Trim() };
-        db.Empresas.Add(empresa);
+        // Convite de boas-vindas p/ o admin definir a própria senha. Falha de e-mail NÃO derruba a criação.
+        try { await OnboardingHelper.EnviarConviteAsync(db, emailSender, cfg, admin); }
+        catch (Exception ex) { logger.LogWarning(ex, "Falha ao enviar convite de boas-vindas para {Email}", admin.Email); }
 
-        var admin = new Usuario
-        {
-            TenantId = tenant.Id,
-            EmpresaId = empresa.Id,
-            Nome = r.AdminNome.Trim(),
-            Email = email,
-            SenhaHash = hasher.Hash(r.AdminSenha),
-            Funcao = Funcao.Admin,
-        };
-        db.Usuarios.Add(admin);
-
-        // Assinatura inicial em trial de 14 dias (uma por tenant; tenant novo => idempotente).
-        db.Assinaturas.Add(new Assinatura
-        {
-            TenantId = tenant.Id,
-            PlanoId = null,
-            TrialAte = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14),
-        });
-
-        // Toda empresa nova nasce com o catálogo padrão de 61 funções de M.O. (mesmo TenantId, mesmo SaveChanges).
-        db.Funcoes.AddRange(DbSeeder.FuncoesParaTenant(tenant.Id));
-
-        await db.SaveChangesAsync();
         return Ok(new { tenantId = tenant.Id, tenant.Nome, adminId = admin.Id, admin.Email });
     }
 

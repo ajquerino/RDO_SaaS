@@ -75,8 +75,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var atual = await sessoes.SessaoAtualAsync(userId);
                 if (atual is null || atual != sessaoToken)
                 {
-                    ctx.HttpContext.Items["sessaoEncerrada"] = true;
-                    ctx.Fail("sessao encerrada em outro dispositivo");
+                    // Cache pode estar velho (ex.: logo após o login, uma leitura concorrente repovoou
+                    // o cache com a sessão antiga). Confirma no banco (autoritativo) antes de derrubar,
+                    // evitando falso 401. O kick real continua: se o banco também divergir, falha.
+                    atual = await sessoes.RevalidarNoBancoAsync(userId);
+                    if (atual is null || atual != sessaoToken)
+                    {
+                        ctx.HttpContext.Items["sessaoEncerrada"] = true;
+                        ctx.Fail("sessao encerrada em outro dispositivo");
+                    }
                 }
             },
             OnChallenge = ctx =>

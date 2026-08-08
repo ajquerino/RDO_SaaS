@@ -7,10 +7,9 @@ import Dashboard from "./Dashboard";
 import Medicao from "./Medicao";
 import Documentos from "./Documentos";
 import HhSemanal from "./HhSemanal";
+import EapEditor from "./EapEditor";
 import SeloPlano from "./SeloPlano";
 import { useAssinatura } from "../lib/useAssinatura";
-
-const brl = (v?: number) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 
 export default function Obras() {
   const qc = useQueryClient();
@@ -143,8 +142,6 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   });
 
   const itens = data?.itens ?? [];
-  const totalHh = itens.reduce((s, i) => s + (i.hhPrevisto ?? 0), 0);
-  const totalValor = itens.reduce((s, i) => s + (i.valor ?? 0), 0);
 
   // editor do RDO (apos todos os hooks, para nao violar as Regras de Hooks)
   if (rdoEditando)
@@ -207,32 +204,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
         </div>
       )}
 
-      <div>
-        <div className="flex justify-between text-sm text-slate-400 mb-2">
-          <span>EAP — {itens.length} itens</span>
-          <span>HH previsto: {totalHh.toLocaleString("pt-BR")}{verValores ? ` · ${brl(totalValor)}` : ""}</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-slate-400 text-left">
-              <tr><th className="py-1 pr-3">Descrição</th><th className="pr-3">Un</th><th className="pr-3">Qtd</th><th className="pr-3">HH</th>{verValores && <th className="pr-3">Valor</th>}<th>Disciplina</th></tr>
-            </thead>
-            <tbody>
-              {itens.map((i) => (
-                <tr key={i.id} className="border-t border-slate-700/50">
-                  <td className="py-1 pr-3">{i.descricao}</td>
-                  <td className="pr-3">{i.unidade ?? "—"}</td>
-                  <td className="pr-3">{i.qtdPrevista ?? "—"}</td>
-                  <td className="pr-3">{i.hhPrevisto ?? "—"}</td>
-                  {verValores && <td className="pr-3">{brl(i.valor)}</td>}
-                  <td>{i.disciplina ?? "—"}</td>
-                </tr>
-              ))}
-              {itens.length === 0 && <tr><td colSpan={verValores ? 6 : 5} className="py-2 text-slate-400">Sem itens{gereObras ? ". Importe um cronograma acima." : "."}</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <EapEditor obraId={obraId} itens={itens} gereObras={gereObras} verValores={verValores} />
 
       {usuarios && usuarios.length > 0 && (
         <div className="text-sm">

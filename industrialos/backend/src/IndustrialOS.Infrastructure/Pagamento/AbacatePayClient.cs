@@ -16,6 +16,7 @@ public class AbacatePayClient : IAbacatePay
     private readonly ILogger<AbacatePayClient> _log;
     private readonly string _baseUrl;
     private readonly string? _apiKey;
+    private readonly string _appUrl;
 
     public AbacatePayClient(HttpClient http, IConfiguration cfg, ILogger<AbacatePayClient> log)
     {
@@ -23,6 +24,7 @@ public class AbacatePayClient : IAbacatePay
         _log = log;
         _baseUrl = (cfg["AbacatePay:BaseUrl"] ?? "https://api.abacatepay.com/v2").TrimEnd('/');
         _apiKey = cfg["AbacatePay:ApiKey"];
+        _appUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
         WebhookSecret = cfg["AbacatePay:WebhookSecret"];
     }
 
@@ -30,20 +32,34 @@ public class AbacatePayClient : IAbacatePay
     public string? WebhookSecret { get; }
 
     public async Task<CobrancaPix> CriarCobrancaPixAsync(long valorCentavos, string externalId, string descricao,
-        string? nomePagador, string? emailPagador, CancellationToken ct = default)
+        string? nomePagador, string? emailPagador, string? docPagador, CancellationToken ct = default)
     {
         if (!Configurado) throw new InvalidOperationException("AbacatePay não configurado (AbacatePay:ApiKey vazio).");
 
-        // /transparents/create (PIX): corpo FLAT. Campos conforme docs.abacatepay.com (llms-full).
+        // taxId: CNPJ/CPF do pagador (só dígitos). Fallback = CPF de teste válido (checksum ok) p/ devmode.
+        var taxId = new string((docPagador ?? "").Where(char.IsDigit).ToArray());
+        if (taxId.Length is not (11 or 14)) taxId = "11144477735";
+
+        // v2 /transparents/create (PIX): body é união discriminada por "method"; os dados vão em "data"
+        // e o PIX (como o BOLETO) exige data.customer. externalId no topo volta no webhook p/ mapear o tenant.
         var corpo = new Dictionary<string, object?>
         {
             ["method"] = "PIX",
-            ["amount"] = valorCentavos,
             ["externalId"] = externalId,
             ["description"] = descricao,
-            ["expiresIn"] = 86400,   // QR válido por 24h
+            ["data"] = new Dictionary<string, object?>
+            {
+                ["amount"] = valorCentavos,
+                ["expiresIn"] = 86400,
+                ["customer"] = new Dictionary<string, object?>
+                {
+                    ["name"] = nomePagador ?? "Cliente",
+                    ["email"] = emailPagador ?? "financeiro@industrialos.com.br",
+                    ["cellphone"] = "(11) 40028922",
+                    ["taxId"] = taxId,
+                },
+            },
         };
-        _ = (nomePagador, emailPagador); // customer não vai no /transparents PIX (quebra a validação)
 
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/transparents/create");
         req.Headers.Add("Authorization", $"Bearer {_apiKey}");

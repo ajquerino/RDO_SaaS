@@ -33,11 +33,12 @@ public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbaca
             return BadRequest(new { erro = "Nenhum plano com preço definido para esta empresa." });
 
         var empresa = await db.Empresas.IgnoreQueryFilters().Where(e => e.TenantId == tid).Select(e => e.RazaoSocial).FirstOrDefaultAsync();
+        var cnpj = await db.Tenants.IgnoreQueryFilters().Where(t => t.Id == tid).Select(t => t.Cnpj).FirstOrDefaultAsync();
         var centavos = (long)Math.Round(preco.Value * 100m);
         try
         {
             var cobranca = await abacate.CriarCobrancaPixAsync(centavos, tid.ToString(),
-                $"IndustrialOS — assinatura mensal ({empresa})", empresa, null);
+                $"IndustrialOS — assinatura mensal ({empresa})", empresa, null, cnpj);
             return Ok(new { cobranca.Id, cobranca.BrCode, cobranca.BrCodeBase64, cobranca.Status, valor = preco });
         }
         catch (InvalidOperationException ex)

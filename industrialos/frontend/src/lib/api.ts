@@ -48,6 +48,15 @@ export type AssinaturaStatus = {
   planoNome?: string | null;
 };
 
+// Cobrança PIX gerada pelo backend (POST /assinatura/cobrar). brCodeBase64 = PNG do QR sem prefixo data:.
+export type CobrancaPix = {
+  id: string;
+  brCode?: string | null;         // copia-e-cola PIX
+  brCodeBase64?: string | null;   // PNG do QR (base64, sem "data:image/png;base64,")
+  status: string;
+  valor?: number | null;
+};
+
 /** upload multipart (sem Content-Type manual — o browser define o boundary). */
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const token = getToken();

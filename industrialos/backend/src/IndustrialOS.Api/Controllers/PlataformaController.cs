@@ -191,6 +191,9 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher) : Con
             TrialAte = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(14),
         });
 
+        // Toda empresa nova nasce com o catálogo padrão de 61 funções de M.O. (mesmo TenantId, mesmo SaveChanges).
+        db.Funcoes.AddRange(DbSeeder.FuncoesParaTenant(tenant.Id));
+
         await db.SaveChangesAsync();
         return Ok(new { tenantId = tenant.Id, tenant.Nome, adminId = admin.Id, admin.Email });
     }

@@ -1,0 +1,8 @@
+# Não enviar para o build da imagem do backend.
+**/bin/
+**/obj/
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/*.user
+.vs/
+.vscode/

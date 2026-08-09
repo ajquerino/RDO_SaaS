@@ -71,8 +71,11 @@ revisão, Auditoria/LGPD, **Planos + billing** (motor de inadimplência somente-
 checkout hospedado PIX/boleto/cartão, webhook auto-desbloqueio), onboarding (convite e-mail +
 autocadastro público `/criar-conta`), cliente escolhe plano, reset de senha + e-mail, sessão única,
 excluir RDO, editar/excluir obra, super-admin (editar/excluir empresa+CNPJ, planos, assinaturas,
-estender trial +14d, **acessar como**), arquitetura de IA (outbox + resumo por regras — stub).
-**Falta:** **offline-first** (última feature grande; TEM que ser feita/testada LOCAL no navegador).
+estender trial +14d, **acessar como**), arquitetura de IA (outbox + resumo por regras — stub),
+**offline-first** (RDO cria/edita offline + fila de sync em IndexedDB — validado), tela de **login com
+visual** (mobile-first). **Já EM PRODUÇÃO no Railway (validado e2e: empresa→obra→EAP→RDO→foto R2→dashboard).**
+**Pendências (config de produção, não código):** e-mail Resend (só logado sem chave), reset do super-admin
+(hoje super@demo/super123), KYC do AbacatePay p/ cobrar de verdade.
 
 ## Deploy (Railway — em produção)
 3 serviços num projeto Railway: **API** (.NET, root `industrialos/backend`, porta 8080),

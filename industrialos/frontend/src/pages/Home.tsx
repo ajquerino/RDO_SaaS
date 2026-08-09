@@ -7,6 +7,7 @@ import Equipamentos from "./Equipamentos";
 import Auditoria from "./Auditoria";
 import BannerAssinatura from "./BannerAssinatura";
 import Configuracoes from "./Configuracoes";
+import StatusOffline from "./StatusOffline";
 
 type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria" | "config";
 
@@ -28,6 +29,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100">
+      <StatusOffline />
       <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
         <div>
           <h1 className="text-lg font-bold">IndustrialOS</h1>

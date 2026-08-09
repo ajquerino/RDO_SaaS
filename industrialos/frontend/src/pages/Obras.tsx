@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiUpload, type Cliente, type Obra, type ObraDetalhe, type ObraLista, type RdoLista } from "../lib/api";
 import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/auth";
+import { useOnline, notificarSyncMudou } from "../lib/useOnline";
+import { novoLocalId, salvarRdoLocal, listarRdosLocaisDaObra, type RdoLocal } from "../lib/db";
 import Rdo from "./Rdo";
 import Dashboard from "./Dashboard";
 import Medicao from "./Medicao";
@@ -95,9 +97,11 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const gereObras = podeGerirObras(funcao);
   const verValores = podeVerValores(funcao);
   const bloqueada = useAssinatura().bloqueada; // assinatura vencida => só leitura
+  const online = useOnline();
   const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
+  const [rascunhos, setRascunhos] = useState<RdoLocal[]>([]);
   const [editandoObra, setEditandoObra] = useState(false);
   const [sub, setSub] = useState<"detalhe" | "dashboard" | "hh" | "medicao" | "documentos">("detalhe");
 
@@ -110,6 +114,25 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
     mutationFn: () => api<{ id: string }>(`/api/v1/obras/${obraId}/rdos`, { method: "POST", body: JSON.stringify({ data: hoje }) }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["rdos", obraId] }); setRdoEditando(r.id); },
   });
+
+  // Rascunhos locais (offline) desta obra ainda não criados no servidor.
+  const recarregarRascunhos = () => listarRdosLocaisDaObra(obraId).then((rs) => setRascunhos(rs.filter((r) => !r.serverId)));
+  useEffect(() => {
+    recarregarRascunhos();
+    const h = () => recarregarRascunhos();
+    window.addEventListener("rdo-sync-mudou", h);
+    return () => window.removeEventListener("rdo-sync-mudou", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obraId, rdoEditando]);
+
+  // "Novo RDO": online cria no servidor; offline cria um rascunho local (sincroniza depois).
+  async function criarRdo() {
+    if (online) { novoRdo.mutate(); return; }
+    const localId = novoLocalId();
+    await salvarRdoLocal({ localId, serverId: null, obraId, data: { data: hoje }, atualizadoEm: Date.now(), sincronizado: false, finalizar: false, erroSync: null, fotosPendentes: [] });
+    notificarSyncMudou();
+    setRdoEditando(localId);
+  }
 
   const excluirRdo = useMutation({
     mutationFn: (rdoId: string) => api(`/api/v1/rdos/${rdoId}`, { method: "DELETE" }),
@@ -222,12 +245,20 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
 
       <div className="border-t border-slate-700 pt-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-slate-400">RDOs — {rdos?.length ?? 0}</span>
-          <button onClick={() => novoRdo.mutate()} disabled={novoRdo.isPending || bloqueada} title={bloqueada ? "Assinatura vencida — acesso somente leitura" : undefined} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
-            {novoRdo.isPending ? "Criando…" : "+ Novo RDO"}
+          <span className="text-sm text-slate-400">RDOs — {(rdos?.length ?? 0) + rascunhos.length}</span>
+          <button onClick={criarRdo} disabled={bloqueada || (online && novoRdo.isPending)} title={bloqueada ? "Assinatura vencida — acesso somente leitura" : undefined} className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
+            {online && novoRdo.isPending ? "Criando…" : online ? "+ Novo RDO" : "+ Novo RDO (offline)"}
           </button>
         </div>
         <ul className="space-y-1">
+          {rascunhos.map((r) => (
+            <li key={r.localId}>
+              <button onClick={() => setRdoEditando(r.localId)} className="w-full flex items-center justify-between rounded-lg border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-sm text-left hover:bg-amber-950/50">
+                <span>Rascunho · {(r.data as { data?: string })?.data ?? "—"}{r.finalizar ? " (aguardando envio)" : ""}</span>
+                <span className="text-xs text-amber-300">📴 não sincronizado</span>
+              </button>
+            </li>
+          ))}
           {rdos?.map((r) => (
             <li key={r.id} className="flex items-stretch gap-1">
               <button onClick={() => setRdoEditando(r.id)} className="flex-1 flex justify-between rounded-lg bg-slate-900 px-3 py-2 text-sm text-left hover:bg-slate-700">
@@ -244,7 +275,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
               )}
             </li>
           ))}
-          {rdos?.length === 0 && <li className="text-slate-500 text-sm">Nenhum RDO ainda.</li>}
+          {(rdos?.length ?? 0) === 0 && rascunhos.length === 0 && <li className="text-slate-500 text-sm">Nenhum RDO ainda.</li>}
         </ul>
       </div>
       </>}

@@ -58,7 +58,9 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
     public async Task<IActionResult> Criar(Guid obraId, [FromBody] RdoUpsert dto)
     {
         if (!await PodeVerObra(obraId)) return Forbid();
-        var numero = (await db.Rdos.Where(r => r.ObraId == obraId).MaxAsync(r => (int?)r.Numero) ?? 0) + 1;
+        // Número sequencial: MAX inclui RDOs EXCLUÍDOS (soft delete) — o índice único IX_rdos_ObraId_Numero
+        // conta eles, então usar o filtro global aqui causaria colisão (23505) após excluir um RDO.
+        var numero = (await db.Rdos.IgnoreQueryFilters().Where(r => r.ObraId == obraId).MaxAsync(r => (int?)r.Numero) ?? 0) + 1;
 
         var rdo = new Rdo { ObraId = obraId, Numero = numero, ResponsavelUsuarioId = UsuarioId };
         Aplicar(rdo, dto);

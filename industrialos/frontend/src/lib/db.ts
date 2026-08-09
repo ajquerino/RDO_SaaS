@@ -43,10 +43,13 @@ export async function getCache<T>(chave: string): Promise<T | undefined> {
 }
 
 // ---- Rascunhos de RDO ----
+// SEMPRE prefixado "loc-" → o editor detecta rascunho local pelo id (sem mudar props).
 export function novoLocalId() {
-  return (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() ??
-    `loc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const uuid = (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `loc-${uuid}`;
 }
+export const ehLocalId = (id: string) => id.startsWith("loc-");
 export async function salvarRdoLocal(r: RdoLocal) {
   (await db()).put("rdosLocais", r);
 }

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiBlob, apiUpload, type Midia, type ObraItem, type RdoDetalhe, type Efetivo, type Paralisacao, type Recurso, type Servico, type Retrabalho, type Pendencia } from "../lib/api";
+import { ehLocalId, obterRdoLocal, salvarRdoLocal, novoLocalId, type RdoLocal, type FotoPendente } from "../lib/db";
+import { sincronizar } from "../lib/sync";
+import { notificarSyncMudou } from "../lib/useOnline";
 
 const CLIMAS = ["Ensolarado", "Parcialmente Nublado", "Chuva Fraca", "Chuva Forte", "Neblina", "Vento"];
 
@@ -67,8 +70,37 @@ const SEG_VAZIA: Seguranca = { dds: false, apr: false, pt: false, areaIsolada: f
 const PROX_VAZIO: ProximoDia = { maoObra: "", equipamentos: "", materiais: "", ferramentas: "", pendencias: [] };
 const PLAN_VAZIO: Planejamento = { servicos: "", prioridades: "", areas: "", observacoes: "" };
 
+// Monta o corpo do RDO (mesmo shape do PUT e do rascunho local).
+function corpoForm(f: Form) {
+  return {
+    data: f.data, turno: f.turno, ocorrencias: f.ocorrencias,
+    clima: f.clima, jornada: f.jornada,
+    dificuldades: f.dificuldades, proximoDia: f.proximoDia,
+    planejamento: f.planejamento, seguranca: f.seguranca, assinaturas: f.assinaturas,
+    efetivo: f.efetivo, paralisacoes: f.paralisacoes, recursos: f.recursos,
+    servicos: f.servicos, retrabalho: f.retrabalho,
+  };
+}
+// Converte um objeto (do servidor OU do rascunho) no estado do formulário.
+function paraForm(r: Partial<RdoDetalhe> & Record<string, unknown>): Form {
+  const rr = r as RdoDetalhe;
+  return {
+    data: rr.data, turno: rr.turno ?? "", ocorrencias: rr.ocorrencias ?? "",
+    clima: { condicoes: rr.clima?.condicoes ?? [], temperatura: rr.clima?.temperatura },
+    jornada: rr.jornada ?? {},
+    efetivo: rr.efetivo ?? [], paralisacoes: rr.paralisacoes ?? [], recursos: rr.recursos ?? [], servicos: rr.servicos ?? [],
+    retrabalho: rr.retrabalho ?? [],
+    dificuldades: { descricao: rr.dificuldades?.descricao ?? "" },
+    proximoDia: { ...PROX_VAZIO, ...(rr.proximoDia ?? {}), pendencias: rr.proximoDia?.pendencias ?? [] },
+    planejamento: { ...PLAN_VAZIO, ...(rr.planejamento ?? {}) },
+    seguranca: { ...SEG_VAZIA, ...(rr.seguranca ?? {}) },
+    assinaturas: { encarregado: rr.assinaturas?.encarregado ?? {}, fiscal: rr.assinaturas?.fiscal ?? {}, supervisor: rr.assinaturas?.supervisor },
+  };
+}
+
 export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId: string; onClose: () => void }) {
   const qc = useQueryClient();
+  const ehLocal = ehLocalId(rdoId); // rascunho offline (id "loc-...")
   const [form, setForm] = useState<Form | null>(null);
   const [numero, setNumero] = useState<number>(0);
   const [status, setStatus] = useState<string>("Rascunho");
@@ -86,31 +118,24 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const { data: funcoes } = useQuery({ queryKey: ["funcoes"], queryFn: () => api<{ id: string; nome: string }[]>("/api/v1/funcoes") });
   const { data: equipamentos } = useQuery({ queryKey: ["equipamentos"], queryFn: () => api<{ id: string; nome: string }[]>("/api/v1/equipamentos") });
 
-  // carrega o RDO
+  // carrega o RDO — do rascunho local (offline) ou do servidor
   useEffect(() => {
+    if (ehLocal) {
+      obterRdoLocal(rdoId).then((d) => {
+        setNumero(0); // rascunho ainda sem número do servidor
+        setStatus(d?.finalizar ? "Enviado" : "Rascunho");
+        setForm(paraForm((d?.data ?? { data: new Date().toISOString().slice(0, 10) }) as Record<string, unknown>));
+      });
+      return;
+    }
     api<RdoDetalhe>(`/api/v1/rdos/${rdoId}`).then((r) => {
       setNumero(r.numero); setStatus(r.status);
       setToken(r.tokenAprovacao ?? null);
       setMotivoRevisao(r.motivoRevisao ?? null);
       setAprovadoPor(r.aprovadoPor ?? null);
-      setForm({
-        data: r.data, turno: r.turno ?? "", ocorrencias: r.ocorrencias ?? "",
-        clima: { condicoes: r.clima?.condicoes ?? [], temperatura: r.clima?.temperatura },
-        jornada: r.jornada ?? {},
-        efetivo: r.efetivo ?? [], paralisacoes: r.paralisacoes ?? [], recursos: r.recursos ?? [], servicos: r.servicos ?? [],
-        retrabalho: r.retrabalho ?? [],
-        dificuldades: { descricao: r.dificuldades?.descricao ?? "" },
-        proximoDia: { ...PROX_VAZIO, ...(r.proximoDia ?? {}), pendencias: r.proximoDia?.pendencias ?? [] },
-        planejamento: { ...PLAN_VAZIO, ...(r.planejamento ?? {}) },
-        seguranca: { ...SEG_VAZIA, ...(r.seguranca ?? {}) },
-        assinaturas: {
-          encarregado: r.assinaturas?.encarregado ?? {},
-          fiscal: r.assinaturas?.fiscal ?? {},
-          supervisor: r.assinaturas?.supervisor,
-        },
-      });
+      setForm(paraForm(r));
     });
-  }, [rdoId]);
+  }, [rdoId, ehLocal]);
 
   // autosave (debounce 800ms)
   useEffect(() => {
@@ -119,20 +144,22 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
     setSalvo("salvando");
     const t = setTimeout(async () => {
       try {
-        await api(`/api/v1/rdos/${rdoId}`, { method: "PUT", body: JSON.stringify({
-          data: form.data, turno: form.turno, ocorrencias: form.ocorrencias,
-          clima: form.clima, jornada: form.jornada,
-          dificuldades: form.dificuldades, proximoDia: form.proximoDia,
-          planejamento: form.planejamento, seguranca: form.seguranca, assinaturas: form.assinaturas,
-          efetivo: form.efetivo, paralisacoes: form.paralisacoes, recursos: form.recursos,
-          servicos: form.servicos, retrabalho: form.retrabalho,
-        }) });
+        if (ehLocal) {
+          // rascunho offline: grava no dispositivo e tenta sincronizar (sobe quando houver rede).
+          const d = (await obterRdoLocal(rdoId)) ?? { localId: rdoId, serverId: null, obraId, data: {}, atualizadoEm: 0, sincronizado: false, finalizar: false, erroSync: null, fotosPendentes: [] } as RdoLocal;
+          d.data = corpoForm(form); d.atualizadoEm = Date.now(); d.sincronizado = false;
+          await salvarRdoLocal(d);
+          notificarSyncMudou();
+          void sincronizar();
+        } else {
+          await api(`/api/v1/rdos/${rdoId}`, { method: "PUT", body: JSON.stringify(corpoForm(form)) });
+          qc.invalidateQueries({ queryKey: ["rdos", obraId] });
+        }
         setSalvo("salvo");
-        qc.invalidateQueries({ queryKey: ["rdos", obraId] });
       } catch { setSalvo("erro"); }
     }, 800);
     return () => clearTimeout(t);
-  }, [form, rdoId, obraId, qc]);
+  }, [form, rdoId, obraId, qc, ehLocal]);
 
   if (!form) return <p className="text-slate-400 p-4">Carregando RDO…</p>;
 
@@ -142,6 +169,13 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const bloqueado = status === "Aprovado";
 
   async function finalizar() {
+    if (ehLocal) {
+      // offline: marca p/ finalizar no sync (quando voltar a rede). Fica "Enviado" localmente.
+      const d = await obterRdoLocal(rdoId);
+      if (d) { d.finalizar = true; d.sincronizado = false; await salvarRdoLocal(d); notificarSyncMudou(); void sincronizar(); }
+      setStatus("Enviado");
+      return;
+    }
     const r = await api<{ status: string; tokenAprovacao?: string }>(`/api/v1/rdos/${rdoId}/finalizar`, { method: "POST" });
     setStatus(r.status);
     setToken(r.tokenAprovacao ?? null);
@@ -198,15 +232,20 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
 
       <div className="flex items-center justify-between sticky top-0 bg-slate-900 py-2 z-10">
         <button onClick={onClose} className="text-sky-400 text-sm">‹ Voltar</button>
-        <span className="font-semibold">RDO {numero} · {status}</span>
+        <span className="font-semibold">{ehLocal ? <span className="text-amber-300">Rascunho (offline)</span> : `RDO ${numero}`} · {status}</span>
         <div className="flex items-center gap-3">
           <span className={`text-xs ${salvo === "erro" ? "text-red-400" : "text-emerald-400"}`}>
-            {salvo === "salvando" ? "Salvando…" : salvo === "salvo" ? "Salvo ✓" : salvo === "erro" ? "Erro ao salvar" : ""}
+            {salvo === "salvando" ? "Salvando…" : salvo === "salvo" ? (ehLocal ? "Salvo no dispositivo ✓" : "Salvo ✓") : salvo === "erro" ? "Erro ao salvar" : ""}
           </span>
-          <button onClick={gerarResumo} disabled={gerandoResumo} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600 disabled:opacity-50">
-            {gerandoResumo ? "Gerando…" : "Resumo do dia"}
-          </button>
-          <button onClick={abrirPdf} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600">Abrir PDF</button>
+          {/* Resumo IA e PDF dependem do servidor — só no RDO online */}
+          {!ehLocal && (
+            <>
+              <button onClick={gerarResumo} disabled={gerandoResumo} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600 disabled:opacity-50">
+                {gerandoResumo ? "Gerando…" : "Resumo do dia"}
+              </button>
+              <button onClick={abrirPdf} className="rounded-lg bg-slate-700 px-3 py-1 text-xs hover:bg-slate-600">Abrir PDF</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -492,8 +531,13 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
 
 function SecaoFotos({ rdoId, disabled }: { rdoId: string; disabled?: boolean }) {
   const qc = useQueryClient();
+  const ehLocal = ehLocalId(rdoId);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { data: fotos } = useQuery({ queryKey: ["midia", rdoId], queryFn: () => api<Midia[]>(`/api/v1/rdos/${rdoId}/midia`) });
+  const [locais, setLocais] = useState<FotoPendente[]>([]);
+
+  // servidor (só RDO online); local carrega do rascunho
+  const { data: fotos } = useQuery({ queryKey: ["midia", rdoId], queryFn: () => api<Midia[]>(`/api/v1/rdos/${rdoId}/midia`), enabled: !ehLocal });
+  useEffect(() => { if (ehLocal) obterRdoLocal(rdoId).then((d) => setLocais(d?.fotosPendentes ?? [])); }, [rdoId, ehLocal]);
 
   const enviar = useMutation({
     mutationFn: (file: File) => { const f = new FormData(); f.append("file", file); return apiUpload(`/api/v1/rdos/${rdoId}/midia`, f); },
@@ -504,38 +548,50 @@ function SecaoFotos({ rdoId, disabled }: { rdoId: string; disabled?: boolean }) 
     onSuccess: () => qc.invalidateQueries({ queryKey: ["midia", rdoId] }),
   });
 
+  async function addLocal(file: File) {
+    const d = await obterRdoLocal(rdoId); if (!d) return;
+    const nova: FotoPendente = { id: novoLocalId(), nome: file.name || "foto.jpg", blob: file, };
+    d.fotosPendentes = [...d.fotosPendentes, nova]; d.sincronizado = false; await salvarRdoLocal(d);
+    setLocais(d.fotosPendentes); notificarSyncMudou();
+  }
+  async function removerLocal(id: string) {
+    const d = await obterRdoLocal(rdoId); if (!d) return;
+    d.fotosPendentes = d.fotosPendentes.filter((f) => f.id !== id); await salvarRdoLocal(d);
+    setLocais(d.fotosPendentes);
+  }
+
+  const onFile = (file: File) => (ehLocal ? void addLocal(file) : enviar.mutate(file));
+
   return (
     <Secao titulo="Fotos">
       {!disabled && (
         <div className="flex items-center gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,video/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) enviar.mutate(f); e.target.value = ""; }}
-          />
+          <input ref={fileRef} type="file" accept="image/*,video/*" capture="environment" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
           <button onClick={() => fileRef.current?.click()} disabled={enviar.isPending}
             className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
             {enviar.isPending ? "Enviando…" : "📷 Tirar / anexar foto"}
           </button>
+          {ehLocal && locais.length > 0 && <span className="text-xs text-amber-300">{locais.length} foto(s) — sobem ao sincronizar</span>}
         </div>
       )}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {fotos?.map((m) => (
+        {!ehLocal && fotos?.map((m) => (
           <div key={m.id} className="relative">
             {m.tipo === "video"
               ? <video src={m.url} className="h-24 w-full rounded-lg object-cover" controls />
               : <img src={m.url} alt="" className="h-24 w-full rounded-lg object-cover" />}
-            {!disabled && (
-              <button onClick={() => apagar.mutate(m.id)}
-                className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">✕</button>
-            )}
+            {!disabled && <button onClick={() => apagar.mutate(m.id)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">✕</button>}
+          </div>
+        ))}
+        {ehLocal && locais.map((f) => (
+          <div key={f.id} className="relative">
+            <img src={URL.createObjectURL(f.blob)} alt="" className="h-24 w-full rounded-lg object-cover" />
+            {!disabled && <button onClick={() => removerLocal(f.id)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">✕</button>}
           </div>
         ))}
       </div>
-      {fotos?.length === 0 && <p className="text-slate-500 text-sm">Nenhuma foto.</p>}
+      {((!ehLocal && fotos?.length === 0) || (ehLocal && locais.length === 0)) && <p className="text-slate-500 text-sm">Nenhuma foto.</p>}
     </Secao>
   );
 }

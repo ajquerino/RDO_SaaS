@@ -1,17 +1,22 @@
+import { getCache, setCache } from "./db";
+
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 
 export function getToken() {
   return localStorage.getItem("accessToken");
 }
 
-/** fetch com Bearer + tratamento basico de erro (JSON).
- *  Tem timeout (padrao 20s): sem isso, se a API nao responder o spinner fica eterno. */
+/** fetch com Bearer + tratamento basico de erro (JSON). Timeout (padrao 20s).
+ *  OFFLINE: todo GET com sucesso é cacheado (IndexedDB); se a rede falhar, o GET serve do cache. */
 export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 20000): Promise<T> {
   const token = getToken();
+  const ehGet = (init.method ?? "GET").toUpperCase() === "GET";
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  let res: Response;
   try {
-    const res = await fetch(`${API}${path}`, {
+    res = await fetch(`${API}${path}`, {
       ...init,
       signal: init.signal ?? ctrl.signal,
       headers: {
@@ -20,26 +25,34 @@ export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 2
         ...(init.headers ?? {}),
       },
     });
-    if (res.status === 204) return undefined as T;
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      // Sessão derrubada por login em outro dispositivo: sai na hora (diferente do 401 de expiração).
-      if (res.status === 401 && (res.headers.get("X-Sessao") === "encerrada" || body.code === "sessao_encerrada")) {
-        localStorage.clear();
-        localStorage.setItem("authMsg", "Sua conta foi acessada em outro dispositivo.");
-        if (location.pathname !== "/") location.assign("/"); else location.reload();
-        throw new Error("Sua conta foi acessada em outro dispositivo.");
-      }
-      throw new Error(body.erro ?? body.title ?? `Erro ${res.status}`);
-    }
-    return res.json() as Promise<T>;
   } catch (e) {
+    clearTimeout(timer);
+    // Falha de REDE (offline/timeout): pra GET, serve do cache local se houver.
+    if (ehGet) {
+      const cache = await getCache<T>(path);
+      if (cache !== undefined) return cache;
+    }
     if (e instanceof DOMException && e.name === "AbortError")
       throw new Error("Tempo de resposta esgotado — verifique se a API está no ar.");
-    throw e;
-  } finally {
-    clearTimeout(timer);
+    throw new Error("Sem conexão com o servidor.");
   }
+  clearTimeout(timer);
+
+  if (res.status === 204) return undefined as T;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    // Sessão derrubada por login em outro dispositivo: sai na hora (diferente do 401 de expiração).
+    if (res.status === 401 && (res.headers.get("X-Sessao") === "encerrada" || body.code === "sessao_encerrada")) {
+      localStorage.clear();
+      localStorage.setItem("authMsg", "Sua conta foi acessada em outro dispositivo.");
+      if (location.pathname !== "/") location.assign("/"); else location.reload();
+      throw new Error("Sua conta foi acessada em outro dispositivo.");
+    }
+    throw new Error(body.erro ?? body.title ?? `Erro ${res.status}`);
+  }
+  const dados = (await res.json()) as T;
+  if (ehGet) void setCache(path, dados); // cacheia leituras p/ uso offline
+  return dados;
 }
 // Nota: uma resposta 402 (assinatura vencida) cai no `if (!res.ok)` acima e lança um Error
 // com a mensagem amigável do corpo ({ erro }). O modo somente-leitura no front é só melhoria de UX.

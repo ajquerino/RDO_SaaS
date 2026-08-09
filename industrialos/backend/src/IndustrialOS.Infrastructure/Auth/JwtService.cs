@@ -42,6 +42,25 @@ public class JwtService(IConfiguration config) : IJwtService
         return new TokenPair(access, refresh, expira);
     }
 
+    public string GerarSuporte(Usuario admin, Guid superAdminId, TimeSpan? duracao = null)
+    {
+        var expira = DateTime.UtcNow.Add(duracao ?? TimeSpan.FromHours(1));
+        var creds = new SigningCredentials(new SymmetricSecurityKey(Key), SecurityAlgorithms.HmacSha256);
+        // COMO o admin da empresa (tenant_id/funcao/sub do admin) => o filtro global de tenant segue valendo.
+        // Sem claim "sessao": modo suporte não derruba nem é derrubado pela sessão única. "suporte" = super-admin.
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, admin.Id.ToString()),
+            new Claim("tenant_id", admin.TenantId.ToString()),
+            new Claim("funcao", admin.Funcao.ToString()),
+            new Claim(JwtRegisteredClaimNames.Email, admin.Email ?? ""),
+            new Claim(JwtRegisteredClaimNames.Name, admin.Nome),
+            new Claim("suporte", superAdminId.ToString())
+        };
+        var jwt = new JwtSecurityToken(Issuer, Audience, claims, expires: expira, signingCredentials: creds);
+        return new JwtSecurityTokenHandler().WriteToken(jwt);
+    }
+
     public (Guid? Id, Guid? Sessao) ValidarRefresh(string refreshToken)
     {
         try

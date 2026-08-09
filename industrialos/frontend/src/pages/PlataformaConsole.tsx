@@ -160,6 +160,14 @@ function Empresas() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["plataforma-tenants"] }); },
   });
 
+  // "Acessar como" (modo suporte): recebe um token COMO admin da empresa, entra no modo suporte e vai pra Home.
+  const { entrarSuporte } = useAuth();
+  const acessar = useMutation({
+    mutationFn: (id: string) => api<{ accessToken: string; empresaNome: string }>(`/api/v1/plataforma/tenants/${id}/acessar`, { method: "POST" }),
+    onSuccess: (r) => { entrarSuporte(r.accessToken, r.empresaNome); location.assign("/"); },
+    onError: (e: any) => alert(e?.message ?? "Não foi possível acessar como esta empresa."),
+  });
+
   return (
     <section className="rounded-xl bg-slate-800 p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -211,6 +219,11 @@ function Empresas() {
                     {editando !== t.id && (
                       <button onClick={() => setEditando(t.id)} className="rounded-lg bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600">Editar</button>
                     )}
+                    <button
+                      disabled={acessar.isPending}
+                      onClick={() => { if (confirm(`Acessar "${t.nome}" em modo suporte?\n\nVocê entra COMO administrador da empresa (temporário, 1h) — este acesso fica registrado na auditoria.`)) acessar.mutate(t.id); }}
+                      className="rounded-lg bg-sky-700/70 px-2 py-1 text-xs text-sky-100 hover:bg-sky-700 disabled:opacity-50"
+                    >Acessar como</button>
                     {t.status === "suspenso" ? (
                       <button onClick={() => status.mutate({ id: t.id, status: "ativo" })} className="rounded-lg bg-emerald-700/60 px-2 py-1 text-xs text-emerald-100 hover:bg-emerald-700">Ativar</button>
                     ) : (

@@ -8,7 +8,7 @@
 SaaS **multi-tenant** de gestão operacional de **obras industriais** (montagem, caldeiraria,
 tubulação, pintura industrial, EPC). Núcleo = **RDO** (Relatório Diário de Obra). Mobile-first,
 pt-BR, preço acessível, time enxuto. **Não** é ERP nem construção civil — o diferencial é o
-**dado de campo industrial**. (Ver `ESTUDO_CONCORRENTES.md` / `ROADMAP_COMPETITIVO.md`.)
+**dado de campo industrial**. (Ver `ESTUDO_CONCORRENTES.md` — estudo competitivo + roadmap, num arquivo só.)
 
 ## Stack e arquitetura
 - **Backend:** .NET 10, **Clean Architecture** em 4 projetos (deps apontam pra dentro):

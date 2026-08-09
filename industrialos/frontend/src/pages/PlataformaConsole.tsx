@@ -76,6 +76,10 @@ function Assinaturas() {
     mutationFn: (id: string) => api(`/api/v1/plataforma/tenants/${id}/assinatura/pagar`, { method: "POST" }),
     onSuccess: invalidar,
   });
+  const estenderTrial = useMutation({
+    mutationFn: (id: string) => api(`/api/v1/plataforma/tenants/${id}/trial/estender`, { method: "POST" }),
+    onSuccess: invalidar,
+  });
   const salvarVenc = useMutation({
     mutationFn: (v: { id: string; vencimentoEm: string | null; planoId: string | null; trialAte: string | null }) =>
       api(`/api/v1/plataforma/tenants/${v.id}/assinatura`, { method: "PUT", body: JSON.stringify({ vencimentoEm: v.vencimentoEm, planoId: v.planoId, trialAte: v.trialAte }) }),
@@ -111,6 +115,7 @@ function Assinaturas() {
                   />
                 </td>
                 <td className="text-right">
+                  <button onClick={() => estenderTrial.mutate(a.id)} disabled={estenderTrial.isPending} className="mr-2 rounded-lg bg-sky-700/60 px-2 py-1 text-xs text-sky-100 hover:bg-sky-700 disabled:opacity-50" title="Estende o fim do trial em 14 dias (reativa se estiver vencida/bloqueada)">Estender +14d</button>
                   <button onClick={() => pagar.mutate(a.id)} disabled={pagar.isPending} className="rounded-lg bg-emerald-700/60 px-2 py-1 text-xs text-emerald-100 hover:bg-emerald-700 disabled:opacity-50">Marcar pago</button>
                 </td>
               </tr>

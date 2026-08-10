@@ -83,7 +83,7 @@ export default function Obras() {
               </span>
               <span className="text-xs rounded-full bg-slate-700 px-2 py-1">{o.status}</span>
             </button>
-            {aberta === o.id && <ObraDetalhe obraId={o.id} />}
+            {aberta === o.id && <ObraDetalhe obraId={o.id} onVoltar={() => setAberta(null)} />}
           </li>
         ))}
         {obras?.length === 0 && <p className="text-slate-400 text-sm">Nenhuma obra ainda.</p>}
@@ -92,7 +92,7 @@ export default function Obras() {
   );
 }
 
-function ObraDetalhe({ obraId }: { obraId: string }) {
+function ObraDetalhe({ obraId, onVoltar }: { obraId: string; onVoltar: () => void }) {
   const qc = useQueryClient();
   const funcao = useAuth((s) => s.usuario)?.funcao;
   const gereObras = podeGerirObras(funcao);
@@ -178,6 +178,9 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
 
   return (
     <div className="border-t border-slate-700 px-4 py-4 space-y-4">
+      {/* Voltar: fecha a obra e retorna à lista de obras (mesmo estilo do Voltar do RDO). */}
+      <button onClick={onVoltar} className="text-sky-400 text-sm">‹ Voltar às obras</button>
+
       <div className="flex flex-wrap gap-1">
         {(["detalhe", "dashboard", "hh", "documentos", ...(gereObras ? ["medicao"] as const : [])] as const).map((s) => (
           <button

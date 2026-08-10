@@ -4,12 +4,16 @@ import Home from "./pages/Home";
 import Aprovacao from "./pages/Aprovacao";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import CriarConta from "./pages/CriarConta";
+import Conheca from "./pages/Conheca";
 import PlataformaConsole from "./pages/PlataformaConsole";
 
 // Guarda de rota simples: sem router por enquanto.
-// Rotas PUBLICAS: /aprovacao/{token} (fiscal aprova) e /redefinir-senha/{token}.
+// Rotas PUBLICAS: /conheca (institucional), /aprovacao/{token} (fiscal aprova) e /redefinir-senha/{token}.
 export default function App() {
   const usuario = useAuth((s) => s.usuario);
+
+  // Página institucional pública (acessível logado ou não).
+  if (window.location.pathname === "/conheca") return <Conheca />;
 
   const mAprov = window.location.pathname.match(/^\/aprovacao\/([^/]+)$/);
   if (mAprov) return <Aprovacao token={mAprov[1]} />;

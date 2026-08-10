@@ -85,6 +85,9 @@ export default function Login() {
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
             Gestão de obras industriais no campo — RDO digital, medição e faturamento num só lugar.
           </p>
+          <a href="/conheca" className="mt-2 inline-block text-xs font-medium text-sky-400 hover:text-sky-300">
+            Conheça o IndustrialOS →
+          </a>
         </header>
 
         {/* 2. Card de login / recuperar senha */}

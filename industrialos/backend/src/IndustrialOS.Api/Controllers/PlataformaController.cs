@@ -206,6 +206,13 @@ public class PlataformaController(AppDbContext db, IPasswordHasher hasher, IEmai
         var (tenant, admin) = await OnboardingHelper.CriarEmpresaAsync(
             db, hasher, r.NomeEmpresa, r.Cnpj, r.AdminNome, r.AdminEmail, r.AdminSenha);
 
+        // Obra de exemplo (EAP + 6 RDOs) p/ a empresa criada pelo console também nascer preenchida.
+        if (ContaExemploSeeder.Habilitado(cfg))
+        {
+            try { await ContaExemploSeeder.SeedAsync(db, tenant.Id, admin.EmpresaId, logger); }
+            catch (Exception ex) { logger.LogWarning(ex, "Falha ao semear conta-exemplo p/ {Tenant}", tenant.Id); }
+        }
+
         // Convite de boas-vindas p/ o admin definir a própria senha. Falha de e-mail NÃO derruba a criação.
         try { await OnboardingHelper.EnviarConviteAsync(db, emailSender, cfg, admin); }
         catch (Exception ex) { logger.LogWarning(ex, "Falha ao enviar convite de boas-vindas para {Email}", admin.Email); }

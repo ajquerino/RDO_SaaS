@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace IndustrialOS.Api.Controllers;
 
@@ -16,7 +17,7 @@ public record SignupRequest(string NomeEmpresa, string? Cnpj, string AdminNome, 
 [Route("api/v1/signup")]
 [AllowAnonymous]
 [EnableRateLimiting("auth")]
-public class SignupController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt, SessaoService sessoes) : ControllerBase
+public class SignupController(AppDbContext db, IPasswordHasher hasher, IJwtService jwt, SessaoService sessoes, IConfiguration cfg) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Signup([FromBody] SignupRequest r)
@@ -33,6 +34,14 @@ public class SignupController(AppDbContext db, IPasswordHasher hasher, IJwtServi
 
         var (_, admin) = await OnboardingHelper.CriarEmpresaAsync(
             db, hasher, r.NomeEmpresa, r.Cnpj, r.AdminNome, r.AdminEmail, r.AdminSenha);
+
+        // Obra de exemplo (EAP + 6 RDOs) p/ a conta grátis já nascer preenchida. Best-effort: NUNCA
+        // pode impedir o cadastro nem o auto-login (o SeedAsync já é idempotente e não lança).
+        if (ContaExemploSeeder.Habilitado(cfg))
+        {
+            try { await ContaExemploSeeder.SeedAsync(db, admin.TenantId, admin.EmpresaId); }
+            catch { /* ignora: seeding do exemplo não bloqueia o signup */ }
+        }
 
         // Auto-login (1 sessão por usuário): define a sessão e devolve os tokens.
         admin.SessaoAtual = Guid.NewGuid();

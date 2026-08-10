@@ -16,14 +16,14 @@ export default function PlataformaConsole() {
   const { usuario, logout } = useAuth();
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-        <div>
-          <h1 className="text-lg font-bold">IndustrialOS · <span className="text-sky-400">Plataforma</span></h1>
-          <p className="text-slate-400 text-xs">{usuario?.nome} · Console do SaaS</p>
+      <header className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-bold">IndustrialOS · <span className="text-sky-400">Plataforma</span></h1>
+          <p className="truncate text-slate-400 text-xs">{usuario?.nome} · Console do SaaS</p>
         </div>
-        <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
+        <button onClick={logout} className="flex-none rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
       </header>
-      <section className="mx-auto max-w-4xl space-y-6 p-4">
+      <section className="mx-auto w-full max-w-4xl space-y-6 p-4">
         <Metricas />
         <Empresas />
         <Assinaturas />

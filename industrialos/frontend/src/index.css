@@ -1,3 +1,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Cinto de segurança: impede rolagem horizontal acidental sem esconder conteúdo verticalmente.
+   overflow-x: clip (não 'hidden') NÃO cria contexto de rolagem — preserva position: sticky e não
+   interfere nos containers internos com overflow-x-auto (tabelas). As causas de overflow foram
+   corrigidas na estrutura (ex.: navegação em drawer no mobile); isto é só rede de proteção. */
+html, body {
+  max-width: 100%;
+  overflow-x: clip;
+}

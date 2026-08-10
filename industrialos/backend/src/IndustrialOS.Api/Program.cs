@@ -124,6 +124,14 @@ using (var scope = app.Services.CreateScope())
     await db.Database.MigrateAsync();
     await DbSeeder.SeedSistemaAsync(db, hasher, builder.Configuration);
 
+    // Conta de exemplo (obra + EAP + 6 RDOs): as contas JÁ EXISTENTES ganham o exemplo no próximo deploy.
+    // Idempotente (marcador "[EXEMPLO]"), roda em TODOS os ambientes; cada tenant em try/catch (não quebra o boot).
+    if (ContaExemploSeeder.Habilitado(builder.Configuration))
+    {
+        var logExemplo = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ContaExemploSeeder");
+        await ContaExemploSeeder.BackfillAsync(db, logExemplo);
+    }
+
     if (app.Environment.IsDevelopment())
         await DbSeeder.SeedDemoAsync(db, scope.ServiceProvider.GetRequiredService<ITenantContext>(), hasher);
 }

@@ -371,23 +371,48 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
       <ListaSecao titulo="Serviços (avanço)" itens={form.servicos} disabled={bloqueado}
         novo={(): Servico => ({ status: "Em andamento" })}
         onChange={(servicos) => up({ servicos })}
-        render={(s, set) => (
-          <div className="space-y-2">
-            <select value={s.obraItemId ?? ""} onChange={(ev) => set({ ...s, obraItemId: ev.target.value || null })} className={inp} disabled={bloqueado}>
-              <option value="">Serviço extra (fora do escopo)</option>
-              {itens?.map((i) => <option key={i.id} value={i.id}>{i.descricao}</option>)}
-            </select>
-            <input placeholder="Atividade" value={s.atividade ?? ""} onChange={(ev) => set({ ...s, atividade: ev.target.value })} className={inp} disabled={bloqueado} />
-            <div className="grid grid-cols-3 gap-2">
-              <select value={s.status ?? ""} onChange={(ev) => set({ ...s, status: ev.target.value })} className={inp} disabled={bloqueado}>
-                {STATUS_SERV.map((st) => <option key={st}>{st}</option>)}
+        render={(s, set) => {
+          const item = itens?.find((i) => i.id === s.obraItemId);
+          const anterior = s.avancoAnterior ?? 0;               // avanço fixo (RDOs anteriores)
+          const unidade = s.unidade ?? item?.unidade ?? "";
+          const hoje = (s.qtdExec ?? anterior) - anterior;       // incremento do dia = acumulado - anterior
+          return (
+            <div className="space-y-2">
+              <select value={s.obraItemId ?? ""} onChange={(ev) => set({ ...s, obraItemId: ev.target.value || null })} className={inp} disabled={bloqueado}>
+                <option value="">Serviço extra (fora do escopo)</option>
+                {itens?.map((i) => <option key={i.id} value={i.id}>{i.descricao}</option>)}
               </select>
-              <input type="number" placeholder="Qtd exec" value={s.qtdExec ?? ""} onChange={(ev) => set({ ...s, qtdExec: ev.target.value ? Number(ev.target.value) : null })} className={inp} disabled={bloqueado} />
-              <input type="number" placeholder="% inform." value={s.pctInformado ?? ""} onChange={(ev) => set({ ...s, pctInformado: ev.target.value ? Number(ev.target.value) : null })} className={inp} disabled={bloqueado} />
+              <input placeholder="Atividade" value={s.atividade ?? ""} onChange={(ev) => set({ ...s, atividade: ev.target.value })} className={inp} disabled={bloqueado} />
+              <div className="grid grid-cols-2 gap-2">
+                <select value={s.status ?? ""} onChange={(ev) => set({ ...s, status: ev.target.value })} className={inp} disabled={bloqueado}>
+                  {STATUS_SERV.map((st) => <option key={st}>{st}</option>)}
+                </select>
+                <input type="number" placeholder="% inform." value={s.pctInformado ?? ""} onChange={(ev) => set({ ...s, pctInformado: ev.target.value ? Number(ev.target.value) : null })} className={inp} disabled={bloqueado} />
+              </div>
+
+              {s.obraItemId ? (
+                // Serviço vinculado à EAP → avanço por quantidade: anterior (fixo) + avancei hoje (incremento).
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg bg-slate-900/60 px-2 py-1.5 text-xs text-slate-400">
+                    Avanço anterior: <span className="text-slate-200">{anterior}{unidade ? ` ${unidade}` : ""}</span>
+                  </div>
+                  <label className="flex items-center justify-between gap-2 text-xs text-slate-400">
+                    <span className="whitespace-nowrap">Avancei hoje (+)</span>
+                    <input type="number" value={hoje || ""} placeholder="0" disabled={bloqueado}
+                      onChange={(ev) => { const h = ev.target.value ? Number(ev.target.value) : 0; set({ ...s, qtdExec: anterior + h }); }}
+                      className={`${inp} w-24`} />
+                  </label>
+                  <p className="text-xs text-emerald-400 sm:col-span-2">Acumulado: {anterior + hoje}{unidade ? ` ${unidade}` : ""}</p>
+                </div>
+              ) : (
+                // Serviço extra (sem EAP): quantidade executada direta, como antes.
+                <input type="number" placeholder="Qtd exec" value={s.qtdExec ?? ""} onChange={(ev) => set({ ...s, qtdExec: ev.target.value ? Number(ev.target.value) : null })} className={inp} disabled={bloqueado} />
+              )}
+
+              {s.pctItem != null && <p className="text-xs text-emerald-400">Avanço calculado: {Math.round((s.pctItem ?? 0) * 100)}%</p>}
             </div>
-            {s.pctItem != null && <p className="text-xs text-emerald-400">Avanço calculado: {Math.round((s.pctItem ?? 0) * 100)}%</p>}
-          </div>
-        )} />
+          );
+        }} />
 
       {/* Retrabalho */}
       <ListaSecao titulo="Retrabalho" itens={form.retrabalho} disabled={bloqueado}

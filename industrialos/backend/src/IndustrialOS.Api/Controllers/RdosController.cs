@@ -70,6 +70,70 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
         return CreatedAtAction(nameof(Obter), new { id = rdo.Id }, new { rdo.Id, rdo.Numero });
     }
 
+    // Duplica um RDO num novo Rascunho pré-preenchido: copia efetivo, equipamentos e serviços (com o
+    // QtdExec ACUMULADO, base do incremento do dia), jornada/clima/segurança. Zera o que é do dia
+    // (paralisações, retrabalho, fotos, assinaturas, ocorrências, aprovação/envio). Número novo seguro.
+    [HttpPost("rdos/{id:guid}/duplicar")]
+    public async Task<IActionResult> Duplicar(Guid id)
+    {
+        var origem = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
+        if (origem is null || !await PodeVerObra(origem.ObraId)) return NotFound();
+
+        // Mesma correção do Criar: MAX inclui RDOs excluídos (índice único conta soft-deletados).
+        var numero = (await db.Rdos.IgnoreQueryFilters().Where(r => r.ObraId == origem.ObraId).MaxAsync(r => (int?)r.Numero) ?? 0) + 1;
+        var hoje = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var novo = new Rdo
+        {
+            ObraId = origem.ObraId,
+            Numero = numero,
+            Revisao = 0,
+            Data = hoje,
+            DiaSemana = DiaSemanaPt(hoje),
+            Turno = origem.Turno,
+            ResponsavelUsuarioId = UsuarioId,
+            Status = RdoStatus.Rascunho,
+            // copiados
+            Jornada = origem.Jornada,
+            Clima = origem.Clima,
+            Seguranca = origem.Seguranca,
+            // dia-específicos limpos
+            Ocorrencias = null,
+            Assinaturas = "{}",
+            Dificuldades = "[]",
+            ProximoDia = "{}",
+            Planejamento = "{}",
+        };
+
+        foreach (var e in origem.Efetivo)
+            novo.Efetivo.Add(new RdoEfetivo { Funcao = e.Funcao, Quantidade = e.Quantidade, Entrada = e.Entrada, Saida = e.Saida, HoraExtra = e.HoraExtra, Obs = e.Obs });
+        foreach (var rc in origem.Recursos)
+            novo.Recursos.Add(new RdoRecurso { Equipamento = rc.Equipamento, Quantidade = rc.Quantidade, Horas = rc.Horas, Obs = rc.Obs });
+        foreach (var s in origem.Servicos)
+            novo.Servicos.Add(new RdoServico
+            {
+                ObraItemId = s.ObraItemId, Atividade = s.Atividade, Local = s.Local, Unidade = s.Unidade,
+                Status = s.Status, PctInformado = s.PctInformado, QtdExec = s.QtdExec, // QtdExec = acumulado anterior
+                EtapasFeitas = s.EtapasFeitas, MotivoHold = s.MotivoHold, Obs = s.Obs
+            });
+        // NÃO copia: Paralisacoes, Retrabalho, RdoMidia (fotos/vídeos). Filhos por navegação, sem setar .Id.
+
+        db.Rdos.Add(novo);
+        await db.SaveChangesAsync();
+        return Ok(new { id = novo.Id });
+    }
+
+    private static string DiaSemanaPt(DateOnly d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Segunda-feira",
+        DayOfWeek.Tuesday => "Terça-feira",
+        DayOfWeek.Wednesday => "Quarta-feira",
+        DayOfWeek.Thursday => "Quinta-feira",
+        DayOfWeek.Friday => "Sexta-feira",
+        DayOfWeek.Saturday => "Sábado",
+        _ => "Domingo",
+    };
+
     [HttpGet("rdos/{id:guid}")]
     public async Task<IActionResult> Obter(Guid id)
     {
@@ -78,6 +142,15 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
 
         // itens da EAP para calcular o avanco por qtd
         var itens = await db.ObraItens.Where(i => i.ObraId == rdo.ObraId).ToDictionaryAsync(i => i.Id);
+
+        // Avanço anterior (fixo) por item da EAP: MAIOR QtdExec do mesmo ObraItemId entre os RDOs da obra
+        // com Numero < o deste RDO. Carrega os RDOs anteriores e agrega EM MEMÓRIA (owned collections).
+        var rdosAnteriores = await db.Rdos.Where(r => r.ObraId == rdo.ObraId && r.Numero < rdo.Numero).ToListAsync();
+        var avancoAnterior = rdosAnteriores
+            .SelectMany(r => r.Servicos)
+            .Where(s => s.ObraItemId != null && s.QtdExec != null)
+            .GroupBy(s => s.ObraItemId!.Value)
+            .ToDictionary(g => g.Key, g => g.Max(s => s.QtdExec) ?? 0m);
 
         return Ok(new
         {
@@ -92,7 +165,8 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
             {
                 s.Id, s.ObraItemId, s.Atividade, s.Local, s.QtdExec, s.Unidade, s.Status, s.PctInformado,
                 s.MotivoHold, s.Obs,
-                PctItem = AvancoCalculo.PctItem(s, s.ObraItemId is { } oid && itens.TryGetValue(oid, out var it) ? it : null)
+                PctItem = AvancoCalculo.PctItem(s, s.ObraItemId is { } oid && itens.TryGetValue(oid, out var it) ? it : null),
+                AvancoAnterior = s.ObraItemId is { } oid2 && avancoAnterior.TryGetValue(oid2, out var av) ? av : 0m
             })
         });
     }

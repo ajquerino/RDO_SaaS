@@ -153,6 +153,13 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
     onError: (e) => setMsg((e as Error).message),
   });
 
+  // Duplicar RDO: cria um novo Rascunho pré-preenchido (efetivo/equipamentos/serviços) e já o abre.
+  const duplicarRdo = useMutation({
+    mutationFn: (rdoId: string) => api<{ id: string }>(`/api/v1/rdos/${rdoId}/duplicar`, { method: "POST" }),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["rdos", obraId] }); setRdoEditando(r.id); },
+    onError: (e) => setMsg((e as Error).message),
+  });
+
   const editarObra = useMutation({
     mutationFn: (r: Record<string, unknown>) => api(`/api/v1/obras/${obraId}`, { method: "PUT", body: JSON.stringify(r) }),
     onSuccess: () => { setEditandoObra(false); qc.invalidateQueries({ queryKey: ["obra", obraId] }); qc.invalidateQueries({ queryKey: ["obras"] }); },
@@ -268,6 +275,12 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
                 <span>RDO {r.numero}{r.revisao > 0 ? ` rev.${r.revisao}` : ""} · {r.data}</span>
                 <span className="text-slate-400">{r.status}</span>
               </button>
+              <button
+                disabled={duplicarRdo.isPending || bloqueada}
+                title={bloqueada ? "Assinatura vencida — somente leitura" : "Duplicar este RDO num novo rascunho"}
+                onClick={() => duplicarRdo.mutate(r.id)}
+                className="rounded-lg bg-slate-700 px-2 text-xs text-slate-200 hover:bg-slate-600 disabled:opacity-50"
+              >⧉ Duplicar</button>
               {gereObras && r.status !== "Aprovado" && (
                 <button
                   disabled={excluirRdo.isPending || bloqueada}

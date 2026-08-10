@@ -19,6 +19,10 @@ public record ItemRequest(string Descricao, string? Unidade, decimal? QtdPrevist
 
 public record VincularRequest(Guid[] UsuarioIds);
 
+// Import mapeável (2 passos): o front devolve as linhas + o mapeamento coluna→campo escolhido na tela.
+public record MapeamentoDto(int Descricao, int? Unidade, int? Qtd, int? Hh, int? Valor, int? Disciplina, int? Inicio, int? Fim);
+public record AplicarImportRequest(List<List<string>> Linhas, MapeamentoDto Mapeamento);
+
 [ApiController]
 [Route("api/v1/obras")]
 [Authorize]
@@ -171,6 +175,66 @@ public class ObrasController(AppDbContext db, ICronogramaImport import) : Contro
         await using var stream = file.OpenReadStream();
         var itens = import.Parse(stream, file.FileName);
         if (itens.Count == 0) return BadRequest(new { erro = "Nenhum item reconhecido no arquivo." });
+
+        var ordem = await db.ObraItens.Where(i => i.ObraId == id).MaxAsync(i => (int?)i.Ordem) ?? 0;
+        foreach (var it in itens)
+            db.ObraItens.Add(new ObraItem
+            {
+                ObraId = id, Descricao = it.Descricao, Unidade = it.Unidade, QtdPrevista = it.QtdPrevista,
+                HhPrevisto = it.HhPrevisto, Valor = it.Valor, Disciplina = it.Disciplina,
+                DataInicio = it.DataInicio, DataFim = it.DataFim, Ordem = ++ordem
+            });
+        await db.SaveChangesAsync();
+        return Ok(new { importados = itens.Count });
+    }
+
+    // ---- Import mapeável (2 passos): analisar → apontar colunas na tela → aplicar ----
+
+    // Passo 1: sobe QUALQUER planilha e devolve colunas + amostra + TODAS as linhas (o front reenvia no aplicar,
+    // evitando reupload) + uma sugestão de mapeamento pelos aliases conhecidos.
+    [HttpPost("{id:guid}/itens/importar/analisar")]
+    [Authorize(Roles = "Planejador,Gestor,Admin")]
+    public async Task<IActionResult> ImportarAnalisar(Guid id, IFormFile file)
+    {
+        if (await db.Obras.FindAsync(id) is null) return NotFound();
+        if (file is null || file.Length == 0) return BadRequest(new { erro = "Arquivo vazio." });
+
+        await using var stream = file.OpenReadStream();
+        var a = import.Analisar(stream, file.FileName);
+        if (a.Colunas.Count == 0) return BadRequest(new { erro = "Não foi possível ler as colunas do arquivo." });
+
+        var s = import.Sugerir(a.Colunas);
+        return Ok(new
+        {
+            colunas = a.Colunas,
+            amostra = a.Linhas.Take(8),        // primeiras linhas p/ conferência
+            totalLinhas = a.Linhas.Count,
+            linhas = a.Linhas,                 // TODAS: o front devolve no aplicar (sem reupload/estado no server)
+            sugestao = new
+            {
+                descricao = s.Descricao >= 0 ? s.Descricao : (int?)null,
+                unidade = s.Unidade, qtd = s.Qtd, hh = s.Hh, valor = s.Valor,
+                disciplina = s.Disciplina, inicio = s.Inicio, fim = s.Fim
+            }
+        });
+    }
+
+    // Passo 2: aplica o mapeamento escolhido e insere os itens (Ordem seguindo o MAX atual, igual ao importar).
+    [HttpPost("{id:guid}/itens/importar/aplicar")]
+    [Authorize(Roles = "Planejador,Gestor,Admin")]
+    public async Task<IActionResult> ImportarAplicar(Guid id, [FromBody] AplicarImportRequest req)
+    {
+        if (await db.Obras.FindAsync(id) is null) return NotFound();
+        if (req?.Mapeamento is null || req.Mapeamento.Descricao < 0)
+            return BadRequest(new { erro = "Escolha a coluna de Descrição." });
+
+        var linhas = (req.Linhas ?? []).Select(r => (IReadOnlyList<string>)r).ToList();
+        var map = new MapeamentoColunas(
+            req.Mapeamento.Descricao, req.Mapeamento.Unidade, req.Mapeamento.Qtd, req.Mapeamento.Hh,
+            req.Mapeamento.Valor, req.Mapeamento.Disciplina, req.Mapeamento.Inicio, req.Mapeamento.Fim);
+
+        var itens = import.Mapear(linhas, map);
+        if (itens.Count == 0) return BadRequest(new { erro = "Nenhum item reconhecido." });
 
         var ordem = await db.ObraItens.Where(i => i.ObraId == id).MaxAsync(i => (int?)i.Ordem) ?? 0;
         foreach (var it in itens)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiUpload, type Cliente, type Obra, type ObraDetalhe, type ObraLista, type RdoLista } from "../lib/api";
 import { useAuth, podeGerirObras, podeVerValores, type Usuario } from "../store/auth";
@@ -112,7 +112,6 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const verValores = podeVerValores(funcao);
   const bloqueada = useAssinatura().bloqueada; // assinatura vencida => só leitura
   const online = useOnline();
-  const fileRef = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [rdoEditando, setRdoEditando] = useState<string | null>(null);
   const [rascunhos, setRascunhos] = useState<RdoLocal[]>([]);
@@ -163,12 +162,6 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const excluirObra = useMutation({
     mutationFn: () => api(`/api/v1/obras/${obraId}`, { method: "DELETE" }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["obras"] }); },
-    onError: (e) => setMsg((e as Error).message),
-  });
-
-  const importar = useMutation({
-    mutationFn: (file: File) => { const f = new FormData(); f.append("file", file); return apiUpload<{ importados: number }>(`/api/v1/obras/${obraId}/itens/importar`, f); },
-    onSuccess: (r) => { setMsg(`${r.importados} itens importados.`); qc.invalidateQueries({ queryKey: ["obra", obraId] }); qc.invalidateQueries({ queryKey: ["obras"] }); },
     onError: (e) => setMsg((e as Error).message),
   });
 
@@ -228,15 +221,11 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
         </div>
       )}
       {gereObras && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xlsm" className="text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white" />
-          <button
-            onClick={() => { const f = fileRef.current?.files?.[0]; if (f) importar.mutate(f); }}
-            disabled={importar.isPending}
-            className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm hover:bg-slate-600 disabled:opacity-50"
-          >
-            {importar.isPending ? "Importando..." : "Importar cronograma"}
-          </button>
+        <div className="space-y-2">
+          <ImportarEap
+            obraId={obraId}
+            onImportado={(n) => { setMsg(`${n} itens importados.`); qc.invalidateQueries({ queryKey: ["obra", obraId] }); qc.invalidateQueries({ queryKey: ["obras"] }); }}
+          />
           {msg && <span className="text-sm text-emerald-400">{msg}</span>}
         </div>
       )}
@@ -293,6 +282,114 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
         </ul>
       </div>
       </>}
+    </div>
+  );
+}
+
+// Import de EAP em 2 passos: (1) sobe qualquer planilha → (2) aponta as colunas (com sugestão) → aplica.
+type CampoEap = "descricao" | "unidade" | "qtd" | "hh" | "valor" | "disciplina" | "inicio" | "fim";
+type AnaliseEap = {
+  colunas: string[];
+  amostra: string[][];
+  totalLinhas: number;
+  linhas: string[][];
+  sugestao: Record<CampoEap, number | null>;
+};
+const CAMPOS_EAP: { k: CampoEap; label: string; obrig?: boolean }[] = [
+  { k: "descricao", label: "Descrição", obrig: true },
+  { k: "unidade", label: "Unidade" },
+  { k: "qtd", label: "Qtd" },
+  { k: "hh", label: "HH" },
+  { k: "valor", label: "Valor" },
+  { k: "disciplina", label: "Disciplina" },
+  { k: "inicio", label: "Início" },
+  { k: "fim", label: "Fim" },
+];
+const MAPA_VAZIO: Record<CampoEap, number | null> = {
+  descricao: null, unidade: null, qtd: null, hh: null, valor: null, disciplina: null, inicio: null, fim: null,
+};
+
+function ImportarEap({ obraId, onImportado }: { obraId: string; onImportado: (n: number) => void }) {
+  const [analise, setAnalise] = useState<AnaliseEap | null>(null);
+  const [mapa, setMapa] = useState<Record<CampoEap, number | null>>(MAPA_VAZIO);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const analisar = useMutation({
+    mutationFn: (file: File) => { const f = new FormData(); f.append("file", file); return apiUpload<AnaliseEap>(`/api/v1/obras/${obraId}/itens/importar/analisar`, f); },
+    onSuccess: (a) => { setAnalise(a); setMapa({ ...MAPA_VAZIO, ...a.sugestao }); setErro(null); },
+    onError: (e) => setErro((e as Error).message),
+  });
+  const aplicar = useMutation({
+    mutationFn: () => api<{ importados: number }>(`/api/v1/obras/${obraId}/itens/importar/aplicar`, { method: "POST", body: JSON.stringify({ linhas: analise!.linhas, mapeamento: mapa }) }),
+    onSuccess: (r) => { setAnalise(null); setMapa(MAPA_VAZIO); onImportado(r.importados); },
+    onError: (e) => setErro((e as Error).message),
+  });
+
+  function escolher(e: React.ChangeEvent<HTMLInputElement>) {
+    setErro(null);
+    const f = e.target.files?.[0];
+    if (f) analisar.mutate(f);
+    e.target.value = ""; // permite reescolher o mesmo arquivo depois
+  }
+
+  // Passo 1 — subir arquivo
+  if (!analise) {
+    return (
+      <div className="space-y-1">
+        <label className="block text-sm text-slate-400">Importar EAP de planilha (.csv, .xlsx, .xlsm)</label>
+        <input type="file" accept=".csv,.xlsx,.xlsm" onChange={escolher} disabled={analisar.isPending}
+          className="text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-sky-600 file:px-3 file:py-1.5 file:text-white disabled:opacity-50" />
+        {analisar.isPending && <p className="text-xs text-slate-400">Lendo o arquivo…</p>}
+        {erro && <p className="text-sm text-red-400">{erro}</p>}
+      </div>
+    );
+  }
+
+  // Passo 2 — apontar colunas + conferir amostra
+  const valSel = (v: number | null) => (v === null ? "" : String(v));
+  return (
+    <div className="space-y-3 rounded-xl bg-slate-900/40 p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-200">Aponte as colunas <span className="text-slate-500">({analise.totalLinhas} linhas)</span></p>
+        <button onClick={() => { setAnalise(null); setErro(null); }} className="text-xs text-slate-400 hover:text-slate-200">Cancelar</button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {CAMPOS_EAP.map(({ k, label, obrig }) => (
+          <label key={k} className="flex items-center justify-between gap-2 text-sm">
+            <span className="whitespace-nowrap text-slate-400">{label}{obrig && <span className="text-sky-400"> *</span>}</span>
+            <select value={valSel(mapa[k])} onChange={(e) => setMapa({ ...mapa, [k]: e.target.value === "" ? null : Number(e.target.value) })}
+              className="min-w-0 flex-1 rounded-lg bg-slate-900 px-2 py-1.5">
+              <option value="">— (nenhuma)</option>
+              {analise.colunas.map((c, i) => <option key={i} value={i}>{c || `Coluna ${i + 1}`}</option>)}
+            </select>
+          </label>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-800">
+        <table className="w-full text-xs">
+          <thead className="text-left text-slate-500">
+            <tr>{analise.colunas.map((c, i) => <th key={i} className="whitespace-nowrap px-2 py-1">{c || `Coluna ${i + 1}`}</th>)}</tr>
+          </thead>
+          <tbody>
+            {analise.amostra.map((row, ri) => (
+              <tr key={ri} className="border-t border-slate-800">
+                {analise.colunas.map((_, ci) => <td key={ci} className="whitespace-nowrap px-2 py-1 text-slate-300">{row[ci] ?? ""}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {erro && <p className="text-sm text-red-400">{erro}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => aplicar.mutate()} disabled={mapa.descricao === null || aplicar.isPending}
+          className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold hover:bg-sky-500 disabled:opacity-50">
+          {aplicar.isPending ? "Importando…" : `Importar ${analise.totalLinhas} itens`}
+        </button>
+        {mapa.descricao === null && <span className="text-xs text-amber-400">Escolha a coluna de Descrição.</span>}
+      </div>
     </div>
   );
 }

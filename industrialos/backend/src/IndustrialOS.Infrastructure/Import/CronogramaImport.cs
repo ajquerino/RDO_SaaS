@@ -10,41 +10,67 @@ public class CronogramaImport : ICronogramaImport
 {
     private static readonly CultureInfo PtBr = new("pt-BR");
 
+    // Fluxo antigo (compatível): lê, sugere o mapeamento por alias e aplica — tudo de uma vez.
     public IReadOnlyList<ItemCronograma> Parse(Stream conteudo, string nomeArquivo)
+    {
+        var a = Analisar(conteudo, nomeArquivo);
+        if (a.Colunas.Count == 0) return [];
+        return Mapear(a.Linhas, Sugerir(a.Colunas));
+    }
+
+    // Passo 1: lê o arquivo → cabeçalho (bruto, p/ exibir) + linhas de dados (texto).
+    public AnaliseCronograma Analisar(Stream conteudo, string nomeArquivo)
     {
         var ext = Path.GetExtension(nomeArquivo).ToLowerInvariant();
         var linhas = ext is ".xlsx" or ".xlsm" ? LerXlsx(conteudo) : LerCsv(conteudo);
-        if (linhas.Count == 0) return [];
+        if (linhas.Count == 0) return new AnaliseCronograma([], []);
 
-        var header = linhas[0].Select(Normalizar).ToList();
+        var colunas = linhas[0].Select(h => (h ?? "").Trim()).ToList();
+        var dados = linhas.Skip(1)
+            .Select(r => (IReadOnlyList<string>)r.Select(c => c?.Trim() ?? "").ToList())
+            .ToList();
+        return new AnaliseCronograma(colunas, dados);
+    }
+
+    // Sugestão de mapeamento pelos MESMOS aliases do fluxo antigo (cabeçalho normalizado).
+    public MapeamentoColunas Sugerir(IReadOnlyList<string> colunas)
+    {
+        var header = colunas.Select(Normalizar).ToList();
         int Col(params string[] nomes) => header.FindIndex(h => nomes.Contains(h));
+        static int? Nz(int i) => i >= 0 ? i : null;
 
-        int cDesc = Col("descricao", "item", "atividade", "servico");
-        int cUn = Col("unidade", "un", "und");
-        int cQtd = Col("qtdprevista", "qtd", "quantidade", "qtdprev");
-        int cHh = Col("hhprevisto", "hh", "hhprev", "homemhora");
-        int cValor = Col("valor", "preco", "custo");
-        int cDisc = Col("disciplina");
-        int cIni = Col("datainicio", "inicio", "dtinicio");
-        int cFim = Col("datafim", "fim", "termino", "dtfim");
+        return new MapeamentoColunas(
+            Col("descricao", "item", "atividade", "servico"),          // Descricao pode vir -1 (não achado)
+            Nz(Col("unidade", "un", "und")),
+            Nz(Col("qtdprevista", "qtd", "quantidade", "qtdprev")),
+            Nz(Col("hhprevisto", "hh", "hhprev", "homemhora")),
+            Nz(Col("valor", "preco", "custo")),
+            Nz(Col("disciplina")),
+            Nz(Col("datainicio", "inicio", "dtinicio")),
+            Nz(Col("datafim", "fim", "termino", "dtfim")));
+    }
+
+    // Passo 2: aplica o mapeamento escolhido às linhas de dados. Pula linha com Descrição vazia.
+    public IReadOnlyList<ItemCronograma> Mapear(IReadOnlyList<IReadOnlyList<string>> linhas, MapeamentoColunas map)
+    {
+        static string Get(IReadOnlyList<string> r, int? c) =>
+            c is int i && i >= 0 && i < r.Count ? r[i]?.Trim() ?? "" : "";
 
         var itens = new List<ItemCronograma>();
-        for (int i = 1; i < linhas.Count; i++)
+        foreach (var r in linhas)
         {
-            var r = linhas[i];
-            string Get(int c) => c >= 0 && c < r.Count ? r[c]?.Trim() ?? "" : "";
-            var desc = Get(cDesc);
-            if (string.IsNullOrWhiteSpace(desc)) continue; // ignora linhas vazias
+            var desc = Get(r, map.Descricao);
+            if (string.IsNullOrWhiteSpace(desc)) continue;
 
             itens.Add(new ItemCronograma(
                 desc,
-                NuloSeVazio(Get(cUn)),
-                Decimal(Get(cQtd)),
-                Decimal(Get(cHh)),
-                Decimal(Get(cValor)),
-                NuloSeVazio(Get(cDisc)),
-                Data(Get(cIni)),
-                Data(Get(cFim))));
+                NuloSeVazio(Get(r, map.Unidade)),
+                Decimal(Get(r, map.Qtd)),
+                Decimal(Get(r, map.Hh)),
+                Decimal(Get(r, map.Valor)),
+                NuloSeVazio(Get(r, map.Disciplina)),
+                Data(Get(r, map.Inicio)),
+                Data(Get(r, map.Fim))));
         }
         return itens;
     }

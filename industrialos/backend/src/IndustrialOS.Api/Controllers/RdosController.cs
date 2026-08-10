@@ -113,7 +113,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
             novo.Servicos.Add(new RdoServico
             {
                 ObraItemId = s.ObraItemId, Atividade = s.Atividade, Local = s.Local, Unidade = s.Unidade,
-                Status = s.Status, PctInformado = s.PctInformado, QtdExec = s.QtdExec, // QtdExec = acumulado anterior
+                Status = s.Status, PctInformado = null, QtdExec = null, // avanço é por dia: começa zerado; o "anterior" aparece fixo (calculado) na tela
                 EtapasFeitas = s.EtapasFeitas, MotivoHold = s.MotivoHold, Obs = s.Obs
             });
         // NÃO copia: Paralisacoes, Retrabalho, RdoMidia (fotos/vídeos). Filhos por navegação, sem setar .Id.

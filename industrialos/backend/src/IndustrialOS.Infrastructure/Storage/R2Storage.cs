@@ -56,4 +56,12 @@ public class R2Storage : IStorage
 
     public Task DeleteAsync(string key, CancellationToken ct = default) =>
         _s3.DeleteObjectAsync(_bucket, key, ct);
+
+    public async Task<byte[]> DownloadAsync(string key, CancellationToken ct = default)
+    {
+        using var resp = await _s3.GetObjectAsync(_bucket, key, ct);
+        using var ms = new MemoryStream();
+        await resp.ResponseStream.CopyToAsync(ms, ct);
+        return ms.ToArray();
+    }
 }

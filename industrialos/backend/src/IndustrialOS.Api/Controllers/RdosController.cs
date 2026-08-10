@@ -9,6 +9,7 @@ using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace IndustrialOS.Api.Controllers;
 
@@ -29,7 +30,7 @@ public record RdoUpsert(DateOnly Data, string? DiaSemana, string? Turno, string?
 [ApiController]
 [Route("api/v1")]
 [Authorize]
-public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : ControllerBase
+public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, IConfiguration cfg) : ControllerBase
 {
     // Planejador/Gestor/Admin acompanham RDOs de todas as obras; demais só das vinculadas.
     private bool VeTodasObras => User.IsInRole("Gestor") || User.IsInRole("Admin") || User.IsInRole("Planejador");
@@ -184,7 +185,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage) : Co
         var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
         if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
 
-        var model = await RdoPdfFactory.BuildAsync(db, rdo);
+        var model = await RdoPdfFactory.BuildAsync(db, rdo, storage, cfg["App:BaseUrl"] ?? "http://localhost:5173");
         return File(pdf.Gerar(model), "application/pdf", $"RDO-{rdo.Numero}.pdf");
     }
 

@@ -11,6 +11,8 @@ public record ProximoDiaModel(string? MaoObra, string? Equipamentos, string? Mat
 public record PlanejamentoModel(string? Servicos, string? Prioridades, string? Areas);
 public record HorasModel(string DiaTipo, string Trabalhado, string? ExtraUtil, string? Extra100, string? Extra150);
 public record AssinaturaModel(string Papel, string? Nome, byte[]? Imagem);
+public record FotoPdf(byte[] Bytes, string? Categoria, string? Descricao);
+public record VideoPdf(string? Descricao, string Link);
 
 public record RdoPdfModel(
     string ObraNome, string? Contrato, string? Cliente, string? Local,
@@ -21,7 +23,8 @@ public record RdoPdfModel(
     IReadOnlyList<RecursoRow> Recursos, IReadOnlyList<ServicoRow> Servicos,
     IReadOnlyList<RetrabalhoRow> Retrabalho, IReadOnlyList<PendenciaRow> Pendencias,
     SegurancaModel? Seguranca, ProximoDiaModel? ProximoDia, PlanejamentoModel? Planejamento,
-    string? Dificuldades, string? Ocorrencias, int Fotos, IReadOnlyList<AssinaturaModel> Assinaturas);
+    string? Dificuldades, string? Ocorrencias, int Fotos, IReadOnlyList<AssinaturaModel> Assinaturas,
+    IReadOnlyList<FotoPdf> FotosImagens, IReadOnlyList<VideoPdf> Videos);
 
 public interface IRdoPdf
 {

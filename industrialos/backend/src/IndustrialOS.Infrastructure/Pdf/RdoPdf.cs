@@ -160,8 +160,48 @@ public class RdoPdf : IRdoPdf
                 col.Item().Element(x => Bloco(x, "Planejamento do próximo dia",
                     $"Serviços: {pl.Servicos ?? "—"}\nPrioridades: {pl.Prioridades ?? "—"}\nÁreas: {pl.Areas ?? "—"}"));
 
+            // Fotos anexadas — em grade (3 por linha). PEGADINHA QuestPDF: .Height(H).Image(bytes).FitArea().
+            if (m.FotosImagens.Count > 0)
+            {
+                col.Item().PaddingTop(6).Text("Fotos").SemiBold().FontColor(Azul);
+                const int porLinha = 3;
+                for (int i = 0; i < m.FotosImagens.Count; i += porLinha)
+                {
+                    var linha = m.FotosImagens.Skip(i).Take(porLinha).ToList();
+                    col.Item().PaddingTop(4).Row(r =>
+                    {
+                        foreach (var f in linha)
+                        {
+                            r.RelativeItem().Border(1).BorderColor(Colors.Grey.Lighten1).Padding(3).Column(x =>
+                            {
+                                x.Item().Height(90).Image(f.Bytes).FitArea();
+                                var legenda = !string.IsNullOrWhiteSpace(f.Categoria) ? f.Categoria : f.Descricao;
+                                if (!string.IsNullOrWhiteSpace(legenda))
+                                    x.Item().PaddingTop(2).Text(legenda).FontSize(7).FontColor(Colors.Grey.Darken1);
+                            });
+                            r.ConstantItem(6);
+                        }
+                        // completa a última linha para manter as fotos com a mesma largura
+                        for (int k = linha.Count; k < porLinha; k++) { r.RelativeItem(); r.ConstantItem(6); }
+                    });
+                }
+            }
+
+            // Vídeos — link permanente que abre o RDO no app (exige login).
+            if (m.Videos.Count > 0)
+            {
+                col.Item().PaddingTop(6).Text("Vídeos").SemiBold().FontColor(Azul);
+                foreach (var v in m.Videos)
+                    col.Item().Text(t =>
+                    {
+                        t.DefaultTextStyle(s => s.FontSize(8));
+                        if (!string.IsNullOrWhiteSpace(v.Descricao)) t.Span(v.Descricao + ": ").SemiBold();
+                        t.Span(v.Link).FontColor(Azul).Underline();
+                    });
+            }
+
             if (m.Fotos > 0)
-                col.Item().Text($"📎 {m.Fotos} foto(s)/vídeo(s) anexado(s) ao RDO.").FontSize(8).FontColor(Colors.Grey.Darken1);
+                col.Item().PaddingTop(2).Text($"📎 {m.Fotos} arquivo(s) de mídia anexado(s) ao RDO.").FontSize(8).FontColor(Colors.Grey.Darken1);
 
             // Assinaturas
             if (m.Assinaturas.Count > 0)

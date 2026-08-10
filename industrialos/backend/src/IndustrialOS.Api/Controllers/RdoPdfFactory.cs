@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IndustrialOS.Application.Pdf;
+using IndustrialOS.Application.Storage;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
@@ -11,14 +12,30 @@ namespace IndustrialOS.Api.Controllers;
 /// autenticada (RdosController) e a rota publica de aprovacao (AprovacaoController).</summary>
 public static class RdoPdfFactory
 {
-    public static async Task<RdoPdfModel> BuildAsync(AppDbContext db, Rdo rdo)
+    public static async Task<RdoPdfModel> BuildAsync(AppDbContext db, Rdo rdo, IStorage storage, string baseUrl)
     {
         var obra = await db.Obras.IgnoreQueryFilters().FirstOrDefaultAsync(o => o.Id == rdo.ObraId);
         var cliente = obra?.ClienteId is { } cid ? await db.Clientes.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.Id == cid) : null;
         var resp = rdo.ResponsavelUsuarioId is { } uid ? (await db.Usuarios.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.Id == uid))?.Nome : null;
         var itens = await db.ObraItens.IgnoreQueryFilters().Where(i => i.ObraId == rdo.ObraId).ToDictionaryAsync(i => i.Id);
 
-        var fotos = await db.RdoMidias.IgnoreQueryFilters().CountAsync(m => m.RdoId == rdo.Id);
+        // Mídias do RDO: fotos embutidas no PDF (bytes) + vídeos como link permanente (abre no app, exige login).
+        var midias = await db.RdoMidias.IgnoreQueryFilters().Where(m => m.RdoId == rdo.Id).OrderBy(m => m.CriadoEm).ToListAsync();
+        var fotos = midias.Count;
+        baseUrl = (baseUrl ?? "").TrimEnd('/');
+
+        var fotosImagens = new List<FotoPdf>();
+        foreach (var m in midias.Where(x => x.Tipo != "video").Take(12)) // limita p/ não estourar o PDF
+        {
+            try
+            {
+                var bytes = await storage.DownloadAsync(m.R2Key);
+                if (bytes.Length > 0) fotosImagens.Add(new FotoPdf(bytes, m.Categoria, m.Descricao));
+            }
+            catch { /* uma imagem ruim/inacessível NÃO pode quebrar o PDF */ }
+        }
+        var videos = midias.Where(x => x.Tipo == "video")
+            .Select(x => new VideoPdf(x.Descricao, $"{baseUrl}/rdo/{rdo.Id}")).ToList();
 
         var clima = Doc(rdo.Clima); var jorn = Doc(rdo.Jornada); var seg = Doc(rdo.Seguranca);
         var prox = Doc(rdo.ProximoDia); var plan = Doc(rdo.Planejamento); var dif = Doc(rdo.Dificuldades);
@@ -74,7 +91,7 @@ public static class RdoPdfFactory
             new SegurancaModel(Bool(seg, "dds"), Bool(seg, "apr"), Bool(seg, "pt"), Bool(seg, "areaIsolada"), Bool(seg, "epis"), Bool(seg, "ferramentas"), Str(seg, "observacoes")),
             new ProximoDiaModel(Str(prox, "maoObra"), Str(prox, "equipamentos"), Str(prox, "materiais"), Str(prox, "ferramentas")),
             new PlanejamentoModel(Str(plan, "servicos"), Str(plan, "prioridades"), Str(plan, "areas")),
-            Str(dif, "descricao"), rdo.Ocorrencias, fotos, assinaturas);
+            Str(dif, "descricao"), rdo.Ocorrencias, fotos, assinaturas, fotosImagens, videos);
     }
 
     // ---- helpers ----

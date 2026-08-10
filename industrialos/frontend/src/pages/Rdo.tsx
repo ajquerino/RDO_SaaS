@@ -534,6 +534,14 @@ function SecaoFotos({ rdoId, disabled }: { rdoId: string; disabled?: boolean }) 
   const ehLocal = ehLocalId(rdoId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [locais, setLocais] = useState<FotoPendente[]>([]);
+  const [lightbox, setLightbox] = useState<{ url: string; tipo: string } | null>(null); // foto/vídeo em tela cheia
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   // servidor (só RDO online); local carrega do rascunho
   const { data: fotos } = useQuery({ queryKey: ["midia", rdoId], queryFn: () => api<Midia[]>(`/api/v1/rdos/${rdoId}/midia`), enabled: !ehLocal });
@@ -579,19 +587,38 @@ function SecaoFotos({ rdoId, disabled }: { rdoId: string; disabled?: boolean }) 
         {!ehLocal && fotos?.map((m) => (
           <div key={m.id} className="relative">
             {m.tipo === "video"
-              ? <video src={m.url} className="h-24 w-full rounded-lg object-cover" controls />
-              : <img src={m.url} alt="" className="h-24 w-full rounded-lg object-cover" />}
+              // Vídeo NÃO carrega sozinho no celular: card "▶ Ver vídeo" que abre sob demanda.
+              ? <button type="button" onClick={() => setLightbox({ url: m.url, tipo: "video" })}
+                  className="flex h-24 w-full flex-col items-center justify-center gap-1 rounded-lg bg-slate-900 text-xs text-slate-300 hover:bg-slate-700">
+                  <span className="text-lg">▶</span>Ver vídeo
+                </button>
+              // Foto: clique abre em tamanho grande (lightbox).
+              : <button type="button" onClick={() => setLightbox({ url: m.url, tipo: "foto" })} className="block h-24 w-full">
+                  <img src={m.url} alt={m.descricao ?? ""} className="h-24 w-full rounded-lg object-cover" />
+                </button>}
             {!disabled && <button onClick={() => apagar.mutate(m.id)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">✕</button>}
           </div>
         ))}
         {ehLocal && locais.map((f) => (
           <div key={f.id} className="relative">
-            <img src={URL.createObjectURL(f.blob)} alt="" className="h-24 w-full rounded-lg object-cover" />
+            <button type="button" onClick={() => setLightbox({ url: URL.createObjectURL(f.blob), tipo: "foto" })} className="block h-24 w-full">
+              <img src={URL.createObjectURL(f.blob)} alt="" className="h-24 w-full rounded-lg object-cover" />
+            </button>
             {!disabled && <button onClick={() => removerLocal(f.id)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-xs text-white">✕</button>}
           </div>
         ))}
       </div>
       {((!ehLocal && fotos?.length === 0) || (ehLocal && locais.length === 0)) && <p className="text-slate-500 text-sm">Nenhuma foto.</p>}
+
+      {/* Lightbox: foto grande ou vídeo sob demanda. Fecha no X, ESC e no backdrop. */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4" onClick={() => setLightbox(null)}>
+          <button onClick={() => setLightbox(null)} aria-label="Fechar" className="absolute right-4 top-4 rounded-lg bg-white/10 px-3 py-1.5 text-white hover:bg-white/20">✕</button>
+          {lightbox.tipo === "video"
+            ? <video src={lightbox.url} controls autoPlay className="max-h-[90vh] max-w-full rounded-lg" onClick={(e) => e.stopPropagation()} />
+            : <img src={lightbox.url} alt="" className="max-h-[90vh] max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />}
+        </div>
+      )}
     </Secao>
   );
 }

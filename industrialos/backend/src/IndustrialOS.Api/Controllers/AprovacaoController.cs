@@ -1,11 +1,13 @@
 using System.Text.Json;
 using IndustrialOS.Application.Pdf;
+using IndustrialOS.Application.Storage;
 using IndustrialOS.Domain.Entities;
 using IndustrialOS.Domain.Services;
 using IndustrialOS.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace IndustrialOS.Api.Controllers;
 
@@ -19,7 +21,7 @@ public record RevisaoDto(string? Nome, string? Motivo);
 [ApiController]
 [Route("api/v1/aprovacao")]
 [AllowAnonymous]
-public class AprovacaoController(AppDbContext db, IRdoPdf pdf) : ControllerBase
+public class AprovacaoController(AppDbContext db, IRdoPdf pdf, IStorage storage, IConfiguration cfg) : ControllerBase
 {
     private Task<Rdo?> PorToken(string token) =>
         db.Rdos.IgnoreQueryFilters().FirstOrDefaultAsync(r => r.TokenAprovacao == token && r.DeletadoEm == null);
@@ -62,7 +64,7 @@ public class AprovacaoController(AppDbContext db, IRdoPdf pdf) : ControllerBase
         var rdo = await PorToken(token);
         if (rdo is null) return NotFound(new { erro = "Link invalido ou expirado." });
 
-        var model = await RdoPdfFactory.BuildAsync(db, rdo);
+        var model = await RdoPdfFactory.BuildAsync(db, rdo, storage, cfg["App:BaseUrl"] ?? "http://localhost:5173");
         return File(pdf.Gerar(model), "application/pdf", $"RDO-{rdo.Numero}.pdf");
     }
 

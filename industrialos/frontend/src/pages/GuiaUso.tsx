@@ -38,7 +38,7 @@ const SECOES: Secao[] = [
     itens: [
       "Cadastro da obra: contrato, local, frente de serviço, prazo de pagamento.",
       "EAP/escopo com itens: unidade, quantidade prevista, HH previsto, valor, disciplina.",
-      "Importe a EAP por CSV/XLSX ou adicione manual.",
+      "Importe a EAP de qualquer planilha (CSV/XLSX) apontando as colunas na tela, ou adicione manual.",
       "Edite os itens a qualquer momento.",
     ],
   },
@@ -124,10 +124,6 @@ const FUTURO = {
     {
       titulo: "RDO em minutos",
       texto: "Modo rápido com efetivo e equipamento padrão da frente pré-preenchidos.",
-    },
-    {
-      titulo: "Import fácil de EAP",
-      texto: "Suba o escopo de qualquer planilha apontando as colunas, sem reformatar.",
     },
   ],
 };

@@ -20,6 +20,7 @@ export default function Home() {
   const [aba, setAba] = useState<Aba>("obras");
   const [guiaAberto, setGuiaAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false); // drawer de navegação no mobile
+  const [resetKey, setResetKey] = useState(0);         // muda para remontar o conteúdo (colapsa obra/RDO aberto)
 
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
     { id: "obras", rotulo: "Obras", visivel: true },
@@ -41,6 +42,8 @@ export default function Home() {
   }, [menuAberto]);
 
   const selecionar = (id: Aba) => { setAba(id); setMenuAberto(false); };
+  // Home (🏠): volta pro início (aba Obras) e REMONTA o conteúdo (resetKey) — colapsa obra/RDO aberto.
+  const irParaHome = () => { setAba("obras"); setMenuAberto(false); setResetKey((k) => k + 1); };
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100">
@@ -56,6 +59,7 @@ export default function Home() {
           </div>
         </div>
         <div className="flex flex-none items-center gap-2">
+          <button onClick={irParaHome} title="Início" className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">🏠<span className="hidden sm:inline"> Início</span></button>
           <button onClick={() => setGuiaAberto(true)} title="Guia de uso" className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">❓<span className="hidden sm:inline"> Ajuda</span></button>
           <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
         </div>
@@ -108,7 +112,7 @@ export default function Home() {
         </div>
       )}
 
-      <section className="mx-auto w-full max-w-3xl p-4">
+      <section key={resetKey} className="mx-auto w-full max-w-3xl p-4">
         {aba === "obras" && <Obras />}
         {aba === "clientes" && gereObras && <Clientes />}
         {aba === "equipamentos" && gereObras && <Equipamentos />}

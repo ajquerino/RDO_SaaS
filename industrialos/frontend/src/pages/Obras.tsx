@@ -11,6 +11,7 @@ import Documentos from "./Documentos";
 import HhSemanal from "./HhSemanal";
 import EapEditor from "./EapEditor";
 import SeloPlano from "./SeloPlano";
+import GuiaUso from "./GuiaUso";
 import { useAssinatura } from "../lib/useAssinatura";
 
 export default function Obras() {
@@ -104,6 +105,7 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
   const [rascunhos, setRascunhos] = useState<RdoLocal[]>([]);
   const [editandoObra, setEditandoObra] = useState(false);
   const [sub, setSub] = useState<"detalhe" | "dashboard" | "hh" | "medicao" | "documentos">("detalhe");
+  const [guiaAberto, setGuiaAberto] = useState(false);
 
   const { data } = useQuery({ queryKey: ["obra", obraId], queryFn: () => api<ObraDetalhe>(`/api/v1/obras/${obraId}`) });
   const { data: usuarios } = useQuery({ queryKey: ["usuarios"], queryFn: () => api<Usuario[]>("/api/v1/usuarios"), enabled: gereObras });
@@ -242,6 +244,18 @@ function ObraDetalhe({ obraId }: { obraId: string }) {
           </select>
         </div>
       )}
+
+      <button
+        onClick={() => setGuiaAberto(true)}
+        className="mb-3 flex w-full items-center gap-3 rounded-xl bg-slate-800/60 px-4 py-3 text-left ring-1 ring-sky-500/40 hover:bg-slate-800"
+      >
+        <span className="text-xl" aria-hidden>📖</span>
+        <span>
+          <span className="block text-sm font-semibold text-sky-300">Leia aqui — tudo que dá pra fazer no IndustrialOS</span>
+          <span className="block text-xs text-slate-400">Guia rápido: RDO, EAP, dashboards, medição, offline e o que vem por aí.</span>
+        </span>
+      </button>
+      {guiaAberto && <GuiaUso onFechar={() => setGuiaAberto(false)} />}
 
       <div className="border-t border-slate-700 pt-4">
         <div className="flex items-center justify-between mb-2">

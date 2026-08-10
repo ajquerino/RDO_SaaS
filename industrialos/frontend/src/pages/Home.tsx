@@ -8,6 +8,7 @@ import Auditoria from "./Auditoria";
 import BannerAssinatura from "./BannerAssinatura";
 import Configuracoes from "./Configuracoes";
 import StatusOffline from "./StatusOffline";
+import GuiaUso from "./GuiaUso";
 
 type Aba = "obras" | "clientes" | "equipamentos" | "usuarios" | "auditoria" | "config";
 
@@ -17,6 +18,7 @@ export default function Home() {
   const gereUsuarios = podeGerirUsuarios(usuario?.funcao);
   const ehAdmin = usuario?.funcao === "Admin"; // Admin do tenant (o super-admin usa o Console de Plataforma)
   const [aba, setAba] = useState<Aba>("obras");
+  const [guiaAberto, setGuiaAberto] = useState(false);
 
   const abas: { id: Aba; rotulo: string; visivel: boolean }[] = [
     { id: "obras", rotulo: "Obras", visivel: true },
@@ -35,8 +37,13 @@ export default function Home() {
           <h1 className="text-lg font-bold">IndustrialOS</h1>
           <p className="text-slate-400 text-xs">Olá, {usuario?.nome} ({usuario?.funcao})</p>
         </div>
-        <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setGuiaAberto(true)} title="Guia de uso" className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700">❓ Ajuda</button>
+          <button onClick={logout} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>
+        </div>
       </header>
+
+      {guiaAberto && <GuiaUso onFechar={() => setGuiaAberto(false)} />}
 
       <BannerAssinatura />
 

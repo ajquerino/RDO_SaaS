@@ -1,32 +1,43 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiPublico, urlPublica, type AprovacaoView } from "../lib/api";
 
 /** Tela publica (sem login) onde o fiscal do cliente aprova ou pede revisao de um RDO. */
 export default function Aprovacao({ token }: { token: string }) {
-  const qc = useQueryClient();
   const [nome, setNome] = useState("");
   const [motivo, setMotivo] = useState("");
   const [modo, setModo] = useState<"ver" | "revisar">("ver");
   const [erro, setErro] = useState<string | null>(null);
+  // Resultado da ação (aprovado/revisão). Quando setado, mostramos a tela de sucesso SEM refazer o GET
+  // — o token é consumido na aprovação, então refazer a busca daria 404 "link expirado" (era o bug).
+  const [feito, setFeito] = useState<null | { tipo: "aprovado" | "revisao"; por: string; em?: string; motivo?: string }>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["aprovacao", token],
     queryFn: () => apiPublico<AprovacaoView>(`/api/v1/aprovacao/${token}`),
     retry: false,
+    enabled: !feito, // não refetch depois de agir (token já consumido)
   });
 
   const aprovar = useMutation({
-    mutationFn: () => apiPublico(`/api/v1/aprovacao/${token}/aprovar`, { method: "POST", body: JSON.stringify({ nome }) }),
-    onSuccess: () => { setErro(null); qc.invalidateQueries({ queryKey: ["aprovacao", token] }); },
+    mutationFn: () => apiPublico<{ status: string; aprovadoPor: string; aprovadoEm: string }>(`/api/v1/aprovacao/${token}/aprovar`, { method: "POST", body: JSON.stringify({ nome }) }),
+    onSuccess: (r) => { setErro(null); setFeito({ tipo: "aprovado", por: r.aprovadoPor ?? nome, em: r.aprovadoEm }); },
     onError: (e) => setErro((e as Error).message),
   });
   const solicitar = useMutation({
     mutationFn: () => apiPublico(`/api/v1/aprovacao/${token}/revisao`, { method: "POST", body: JSON.stringify({ nome, motivo }) }),
-    onSuccess: () => { setErro(null); qc.invalidateQueries({ queryKey: ["aprovacao", token] }); },
+    onSuccess: () => { setErro(null); setFeito({ tipo: "revisao", por: nome, motivo }); },
     onError: (e) => setErro((e as Error).message),
   });
 
+  if (feito) return (
+    <Casca>
+      {feito.tipo === "aprovado"
+        ? <Aviso tipo="ok" titulo="RDO aprovado ✓" texto={`Obrigado, ${feito.por}! Aprovação registrada${feito.em ? ` em ${new Date(feito.em).toLocaleString("pt-BR")}` : ""}. A equipe da obra foi notificada.`} />
+        : <Aviso tipo="alerta" titulo="Revisão solicitada" texto={`Enviado por ${feito.por}. A equipe da obra vai corrigir e reenviar.${feito.motivo ? `\n\nMotivo: ${feito.motivo}` : ""}`} />}
+      <p className="text-center text-sm text-slate-500">Você já pode fechar esta página.</p>
+    </Casca>
+  );
   if (isLoading) return <Casca><p className="text-slate-400">Carregando…</p></Casca>;
   if (isError || !data) return <Casca><Aviso tipo="erro" titulo="Link inválido ou expirado" texto="Peça um novo link de aprovação à equipe da obra." /></Casca>;
 

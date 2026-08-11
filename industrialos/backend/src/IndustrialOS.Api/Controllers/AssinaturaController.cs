@@ -66,14 +66,19 @@ public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbaca
         var a = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.TenantId == tid);
         var e = AssinaturaCalculo.Avaliar(a, DateOnly.FromDateTime(DateTime.UtcNow));
 
+        // Empresa suspensa pelo super-admin também é somente-leitura (independe do billing).
+        var status = await db.Tenants.IgnoreQueryFilters().Where(x => x.Id == tid).Select(x => x.Status).FirstOrDefaultAsync();
+        bool suspensa = status == "suspenso";
+
         string? planoNome = null;
         if (a?.PlanoId is Guid pid)
             planoNome = await db.Planos.IgnoreQueryFilters().Where(p => p.Id == pid).Select(p => p.Nome).FirstOrDefaultAsync();
 
         return Ok(new
         {
-            estado = e.Estado.ToString(),
-            bloqueada = e.Bloqueada,
+            estado = suspensa ? "Suspensa" : e.Estado.ToString(),
+            bloqueada = e.Bloqueada || suspensa,
+            suspensa,
             diasParaVencer = e.DiasParaVencer,
             diasAtraso = e.DiasAtraso,
             avisoNivel = e.AvisoNivel,

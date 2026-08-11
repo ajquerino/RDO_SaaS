@@ -33,17 +33,24 @@ public class SomenteLeituraInadimplenteFilter(AppDbContext db, ITenantContext te
             return;
         }
 
+        // Empresa SUSPENSA pelo super-admin (ou soft-deletada) => somente leitura, independente da assinatura.
+        var t = await db.Tenants.IgnoreQueryFilters().Where(x => x.Id == tid)
+            .Select(x => new { x.Status, x.DeletadoEm }).FirstOrDefaultAsync();
+        bool suspenso = t is not null && (t.Status == "suspenso" || t.DeletadoEm != null);
+
         // Escrita de um tenant normal: avalia a assinatura (Assinatura não é BaseEntity; IgnoreQueryFilters por segurança).
         var assinatura = await db.Assinaturas.IgnoreQueryFilters().FirstOrDefaultAsync(a => a.TenantId == tid);
         var estado = AssinaturaCalculo.Avaliar(assinatura, DateOnly.FromDateTime(DateTime.UtcNow));
 
-        if (estado.Bloqueada)
+        if (suspenso || estado.Bloqueada)
         {
-            const string msg = "Assinatura vencida — acesso somente leitura até regularizar.";
+            var msg = suspenso
+                ? "Empresa suspensa — acesso somente leitura."
+                : "Assinatura vencida — acesso somente leitura até regularizar.";
             context.Result = new ObjectResult(new ProblemDetails
             {
                 Status = StatusCodes.Status402PaymentRequired,
-                Title = "Assinatura vencida",
+                Title = suspenso ? "Empresa suspensa" : "Assinatura vencida",
                 Detail = msg,
                 Extensions = { ["erro"] = msg, ["diasAtraso"] = estado.DiasAtraso },
             })

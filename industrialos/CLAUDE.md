@@ -5,6 +5,10 @@
 > **antes de começar qualquer tarefa**. Não repita perguntas de contexto que já estão aqui.
 
 ## O produto
+> **MARCA = Montaris** (nome comercial, exibido na UI/e-mails/PWA). O **código, projetos e namespaces
+> C# seguem `IndustrialOS.*`** (arquitetura — NÃO renomear); a pasta/repo idem. Ao mexer em texto
+> user-facing use "Montaris"; ao mexer em código use `IndustrialOS`. Descritor: "Gestão de obras industriais".
+
 SaaS **multi-tenant** de gestão operacional de **obras industriais** (montagem, caldeiraria,
 tubulação, pintura industrial, EPC). Núcleo = **RDO** (Relatório Diário de Obra). Mobile-first,
 pt-BR, preço acessível, time enxuto. **Não** é ERP nem construção civil — o diferencial é o

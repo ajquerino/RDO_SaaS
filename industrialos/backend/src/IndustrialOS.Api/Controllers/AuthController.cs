@@ -96,12 +96,12 @@ public class AuthController(AppDbContext db, IPasswordHasher hasher, IJwtService
             var baseUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
             var link = $"{baseUrl}/redefinir-senha/{token}";
             var html = $"""
-                <p>Recebemos um pedido para redefinir sua senha no IndustrialOS.</p>
+                <p>Recebemos um pedido para redefinir sua senha no Montaris.</p>
                 <p><a href="{link}">Clique aqui para criar uma nova senha</a> — o link expira em 1 hora.</p>
                 <p>Se não foi você, ignore este e-mail; nada muda.</p>
                 """;
             // Falha de envio nunca altera a resposta (não vaza existência do e-mail).
-            try { await email.EnviarAsync(user.Email!, "Redefinição de senha — IndustrialOS", html); }
+            try { await email.EnviarAsync(user.Email!, "Redefinição de senha — Montaris", html); }
             catch { /* logado no EmailSender */ }
         }
         return Ok(new { mensagem = neutra });

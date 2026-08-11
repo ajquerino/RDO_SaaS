@@ -25,7 +25,7 @@ public class RdoPdf : IRdoPdf
                 page.Content().PaddingVertical(8).Element(c => Corpo(c, m));
                 page.Footer().AlignCenter().Text(t =>
                 {
-                    t.Span("IndustrialOS · gerado em " + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "  ·  ").FontSize(7).FontColor(Colors.Grey.Medium);
+                    t.Span("Montaris · gerado em " + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "  ·  ").FontSize(7).FontColor(Colors.Grey.Medium);
                     t.CurrentPageNumber().FontSize(7).FontColor(Colors.Grey.Medium);
                     t.Span("/").FontSize(7).FontColor(Colors.Grey.Medium);
                     t.TotalPages().FontSize(7).FontColor(Colors.Grey.Medium);

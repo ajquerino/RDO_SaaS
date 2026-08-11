@@ -80,13 +80,13 @@ export default function Login() {
         <header className="text-center">
           <div className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight">
             <span aria-hidden>🏗️</span>
-            <span>Industrial<span className="text-sky-400">OS</span></span>
+            <span>Monta<span className="text-sky-400">ris</span></span>
           </div>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
             Gestão de obras industriais no campo — RDO digital, medição e faturamento num só lugar.
           </p>
           <a href="/conheca" className="mt-2 inline-block text-xs font-medium text-sky-400 hover:text-sky-300">
-            Conheça o IndustrialOS →
+            Conheça o Montaris →
           </a>
         </header>
 

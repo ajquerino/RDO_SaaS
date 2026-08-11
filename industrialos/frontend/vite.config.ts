@@ -9,8 +9,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "IndustrialOS",
-        short_name: "IndustrialOS",
+        name: "Montaris",
+        short_name: "Montaris",
+        description: "Gestão de obras industriais",
         start_url: "/",
         display: "standalone",
         background_color: "#0f172a",

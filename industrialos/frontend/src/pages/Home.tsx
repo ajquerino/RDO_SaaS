@@ -54,7 +54,7 @@ export default function Home() {
           <button onClick={() => setMenuAberto(true)} aria-label="Abrir menu"
             className="flex-none rounded-lg bg-slate-800 px-3 py-1.5 text-sm hover:bg-slate-700 md:hidden">☰</button>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold">IndustrialOS</h1>
+            <h1 className="truncate text-lg font-bold">Montaris</h1>
             <p className="truncate text-xs text-slate-400">Olá, {usuario?.nome} ({usuario?.funcao})</p>
           </div>
         </div>

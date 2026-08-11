@@ -140,7 +140,7 @@ export default function GuiaUso({ onFechar }: { onFechar: () => void }) {
     <div className="fixed inset-0 z-[80] overflow-y-auto overscroll-contain bg-slate-900 text-slate-100">
       {/* Cabeçalho fixo com título + fechar */}
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-4 py-3 backdrop-blur">
-        <h2 className="text-base font-bold sm:text-lg">📖 Guia do IndustrialOS — tudo que dá pra fazer</h2>
+        <h2 className="text-base font-bold sm:text-lg">📖 Guia do Montaris — tudo que dá pra fazer</h2>
         <button
           onClick={onFechar}
           aria-label="Fechar guia"

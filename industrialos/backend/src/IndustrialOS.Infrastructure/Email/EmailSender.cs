@@ -15,7 +15,7 @@ public class EmailSender(IHttpClientFactory http, IConfiguration cfg, ILogger<Em
     {
         var apiKey = cfg["Email:ApiKey"];
         var from = cfg["Email:From"] ?? "no-reply@localhost";
-        var fromName = cfg["Email:FromName"] ?? "IndustrialOS";
+        var fromName = cfg["Email:FromName"] ?? "Montaris";
         var provider = (cfg["Email:Provider"] ?? "resend").Trim().ToLowerInvariant();
 
         // Sem chave => modo dev: loga e retorna (fluxo de recuperação testável sem provedor real).

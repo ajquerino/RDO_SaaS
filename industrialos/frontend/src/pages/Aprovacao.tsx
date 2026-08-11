@@ -138,7 +138,7 @@ function Casca({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-slate-900 text-slate-100">
       <div className="mx-auto max-w-lg px-4 py-6">
-        <p className="text-center text-xs text-slate-500 mb-4">IndustrialOS</p>
+        <p className="text-center text-xs text-slate-500 mb-4">Montaris</p>
         {children}
       </div>
     </main>

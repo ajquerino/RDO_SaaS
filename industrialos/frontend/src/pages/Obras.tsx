@@ -52,7 +52,7 @@ export default function Obras() {
       >
         <span className="text-xl" aria-hidden>📖</span>
         <span>
-          <span className="block text-sm font-semibold text-sky-300">Leia aqui — tudo que dá pra fazer no IndustrialOS</span>
+          <span className="block text-sm font-semibold text-sky-300">Leia aqui — tudo que dá pra fazer no Montaris</span>
           <span className="block text-xs text-slate-400">Guia rápido: RDO, EAP, dashboards, medição, offline e o que vem por aí.</span>
         </span>
       </button>

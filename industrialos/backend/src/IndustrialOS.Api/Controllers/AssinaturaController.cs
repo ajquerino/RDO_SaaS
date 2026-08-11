@@ -43,7 +43,7 @@ public class AssinaturaController(AppDbContext db, ITenantContext tenant, IAbaca
             {
                 var centavos = (long)Math.Round(plano.PrecoMensal.Value * 100m);
                 plano.ProvedorProdutoId = await abacate.CriarProdutoAsync(
-                    $"IndustrialOS — {plano.Nome}", "Assinatura mensal IndustrialOS", centavos, $"plano-{plano.Id}");
+                    $"Montaris — {plano.Nome}", "Assinatura mensal Montaris", centavos, $"plano-{plano.Id}");
                 await db.SaveChangesAsync();
             }
 

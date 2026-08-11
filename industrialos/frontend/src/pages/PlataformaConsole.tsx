@@ -18,7 +18,7 @@ export default function PlataformaConsole() {
     <main className="min-h-screen bg-slate-900 text-slate-100">
       <header className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-3">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold">IndustrialOS · <span className="text-sky-400">Plataforma</span></h1>
+          <h1 className="truncate text-lg font-bold">Montaris · <span className="text-sky-400">Plataforma</span></h1>
           <p className="truncate text-slate-400 text-xs">{usuario?.nome} · Console do SaaS</p>
         </div>
         <button onClick={logout} className="flex-none rounded-lg bg-slate-800 px-3 py-1.5 text-sm">Sair</button>

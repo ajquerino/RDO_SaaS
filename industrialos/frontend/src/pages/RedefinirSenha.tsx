@@ -29,7 +29,7 @@ export default function RedefinirSenha({ token }: { token: string }) {
     <main className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-4">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">IndustrialOS</h1>
+          <h1 className="text-2xl font-bold">Montaris</h1>
           <p className="text-slate-400 text-sm">Criar nova senha</p>
         </div>
         {ok ? (

@@ -70,10 +70,10 @@ public static class OnboardingHelper
         var baseUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
         var link = $"{baseUrl}/redefinir-senha/{token}";
         var html = $"""
-            <p>Bem-vindo ao IndustrialOS! Uma conta de administrador foi criada para você.</p>
+            <p>Bem-vindo ao Montaris! Uma conta de administrador foi criada para você.</p>
             <p><a href="{link}">Clique aqui para definir sua senha</a> — o link expira em 24 horas.</p>
             <p>Depois, entre com o seu e-mail e a senha que você escolher.</p>
             """;
-        await email.EnviarAsync(admin.Email!, "Bem-vindo ao IndustrialOS — defina sua senha", html);
+        await email.EnviarAsync(admin.Email!, "Bem-vindo ao Montaris — defina sua senha", html);
     }
 }

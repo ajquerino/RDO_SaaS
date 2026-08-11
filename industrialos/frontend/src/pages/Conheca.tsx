@@ -1,4 +1,4 @@
-// Página pública "Conheça o IndustrialOS" (rota /conheca, sem login). Explica o produto em detalhe.
+// Página pública "Conheça o Montaris" (rota /conheca, sem login). Explica o produto em detalhe.
 // Mobile-first: uma coluna, texto legível, CTAs grandes; no desktop só centraliza com max-width.
 
 const PASSOS = [
@@ -58,7 +58,7 @@ export default function Conheca() {
         <header className="space-y-5 text-center">
           <div className="inline-flex items-center gap-2 text-lg font-bold tracking-tight">
             <span aria-hidden>🏗️</span>
-            <span>Industrial<span className="text-sky-400">OS</span></span>
+            <span>Monta<span className="text-sky-400">ris</span></span>
           </div>
           <h1 className="text-3xl font-bold leading-tight sm:text-4xl">
             O sistema operacional da execução da sua obra industrial.

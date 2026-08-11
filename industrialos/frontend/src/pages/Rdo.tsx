@@ -6,6 +6,7 @@ import { sincronizar } from "../lib/sync";
 import { notificarSyncMudou } from "../lib/useOnline";
 
 const CLIMAS = ["Ensolarado", "Parcialmente Nublado", "Chuva Fraca", "Chuva Forte", "Neblina", "Vento"];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // "HH:MM" -> minutos
 function hm(t?: string): number | null {
@@ -108,6 +109,9 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const [motivoRevisao, setMotivoRevisao] = useState<string | null>(null);
   const [aprovadoPor, setAprovadoPor] = useState<string | null>(null);
   const [linkCopiado, setLinkCopiado] = useState(false);
+  const [fiscalEmail, setFiscalEmail] = useState("");   // opcional: envia o link de aprovação por e-mail
+  const [emailMsg, setEmailMsg] = useState<string | null>(null);
+  const [reenviando, setReenviando] = useState(false);
   const [salvo, setSalvo] = useState<"" | "salvando" | "salvo" | "erro">("");
   const [resumo, setResumo] = useState<{ texto: string; origem: string } | null>(null);
   const [gerandoResumo, setGerandoResumo] = useState(false);
@@ -136,6 +140,11 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
       setForm(paraForm(r));
     });
   }, [rdoId, ehLocal]);
+
+  // Lembra o e-mail do fiscal por obra (prefill do campo opcional de envio do link).
+  useEffect(() => {
+    setFiscalEmail(localStorage.getItem(`fiscalEmail:${obraId}`) ?? "");
+  }, [obraId]);
 
   // autosave (debounce 800ms)
   useEffect(() => {
@@ -169,18 +178,47 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
   const bloqueado = status === "Aprovado";
 
   async function finalizar() {
+    const emailFiscal = fiscalEmail.trim();
+    // Validação no cliente: e-mail vazio = só finaliza (como antes); preenchido tem que ser válido.
+    if (emailFiscal && !EMAIL_RE.test(emailFiscal)) { setEmailMsg("E-mail do fiscal inválido."); return; }
+    setEmailMsg(null);
+    if (emailFiscal) localStorage.setItem(`fiscalEmail:${obraId}`, emailFiscal);
+
     if (ehLocal) {
       // offline: marca p/ finalizar no sync (quando voltar a rede). Fica "Enviado" localmente.
+      // O e-mail não sai offline — quando estiver online e "Enviado", use "Reenviar por e-mail".
       const d = await obterRdoLocal(rdoId);
       if (d) { d.finalizar = true; d.sincronizado = false; await salvarRdoLocal(d); notificarSyncMudou(); void sincronizar(); }
       setStatus("Enviado");
+      if (emailFiscal) setEmailMsg("RDO será enviado ao sincronizar. Depois, use \"Reenviar por e-mail\" para mandar o link ao fiscal.");
       return;
     }
-    const r = await api<{ status: string; tokenAprovacao?: string }>(`/api/v1/rdos/${rdoId}/finalizar`, { method: "POST" });
+    const r = await api<{ status: string; tokenAprovacao?: string; emailEnviado?: boolean; emailPara?: string | null }>(
+      `/api/v1/rdos/${rdoId}/finalizar`,
+      { method: "POST", body: JSON.stringify({ emailFiscal: emailFiscal || null }) });
     setStatus(r.status);
     setToken(r.tokenAprovacao ?? null);
     setMotivoRevisao(null);
+    if (r.emailEnviado) setEmailMsg(`Link de aprovação enviado para ${r.emailPara ?? emailFiscal}.`);
+    else if (emailFiscal) setEmailMsg("Não foi possível enviar o e-mail agora. Copie o link abaixo e envie manualmente.");
     qc.invalidateQueries({ queryKey: ["rdos", obraId] });
+  }
+
+  // Reenvia o link de aprovação por e-mail para um RDO já "Enviado".
+  async function reenviarEmail() {
+    const e = fiscalEmail.trim();
+    if (!EMAIL_RE.test(e)) { setEmailMsg("Informe um e-mail válido."); return; }
+    setReenviando(true); setEmailMsg(null);
+    try {
+      const r = await api<{ emailEnviado?: boolean; emailPara?: string | null }>(
+        `/api/v1/rdos/${rdoId}/enviar-aprovacao`, { method: "POST", body: JSON.stringify({ email: e }) });
+      localStorage.setItem(`fiscalEmail:${obraId}`, e);
+      setEmailMsg(r.emailEnviado
+        ? `Link de aprovação enviado para ${r.emailPara ?? e}.`
+        : "Não foi possível enviar o e-mail agora. Copie o link e envie manualmente.");
+    } catch (err) {
+      setEmailMsg((err as Error).message);
+    } finally { setReenviando(false); }
   }
 
   const linkAprovacao = token ? `${window.location.origin}/aprovacao/${token}` : null;
@@ -541,13 +579,41 @@ export default function Rdo({ obraId, rdoId, onClose }: { obraId: string; rdoId:
               {linkCopiado ? "Copiado ✓" : "Copiar"}
             </button>
           </div>
+          {/* Reenvio por e-mail */}
+          <div className="flex gap-2 pt-1">
+            <input
+              type="email" inputMode="email" autoComplete="email"
+              value={fiscalEmail} onChange={(e) => setFiscalEmail(e.target.value)}
+              placeholder="E-mail do fiscal"
+              className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs"
+            />
+            <button
+              onClick={reenviarEmail} disabled={reenviando}
+              className="rounded-lg bg-slate-700 px-3 py-2 text-sm font-semibold hover:bg-slate-600 disabled:opacity-50"
+            >
+              {reenviando ? "Enviando…" : "Reenviar por e-mail"}
+            </button>
+          </div>
+          {emailMsg && <p className="text-xs text-sky-300">{emailMsg}</p>}
         </div>
       )}
 
       {!bloqueado && (status === "Rascunho" || status === "RevisaoSolicitada") && (
-        <button onClick={finalizar} className="w-full rounded-lg bg-emerald-600 py-3 font-semibold hover:bg-emerald-500">
-          {status === "RevisaoSolicitada" ? "Reenviar para aprovação" : "Finalizar e enviar"}
-        </button>
+        <div className="space-y-2">
+          <div>
+            <label className="mb-1 block text-xs text-slate-400">E-mail do fiscal (opcional — envia o link de aprovação)</label>
+            <input
+              type="email" inputMode="email" autoComplete="email"
+              value={fiscalEmail} onChange={(e) => setFiscalEmail(e.target.value)}
+              placeholder="fiscal@cliente.com"
+              className="w-full rounded-lg bg-slate-900 px-3 py-2 text-sm"
+            />
+          </div>
+          {emailMsg && <p className="text-xs text-sky-300">{emailMsg}</p>}
+          <button onClick={finalizar} className="w-full rounded-lg bg-emerald-600 py-3 font-semibold hover:bg-emerald-500">
+            {status === "RevisaoSolicitada" ? "Reenviar para aprovação" : "Finalizar e enviar"}
+          </button>
+        </div>
       )}
       {status === "Enviado" && <p className="text-center text-sm text-slate-400">Aguardando aprovação do fiscal.</p>}
     </div>

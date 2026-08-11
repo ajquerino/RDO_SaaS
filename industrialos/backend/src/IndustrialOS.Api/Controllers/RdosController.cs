@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using IndustrialOS.Application.Email;
 using IndustrialOS.Application.Ia;
 using IndustrialOS.Application.Pdf;
 using IndustrialOS.Application.Storage;
@@ -27,10 +28,15 @@ public record RdoUpsert(DateOnly Data, string? DiaSemana, string? Turno, string?
     EfetivoDto[]? Efetivo, ParalisacaoDto[]? Paralisacoes, RecursoDto[]? Recursos, ServicoDto[]? Servicos,
     RetrabalhoDto[]? Retrabalho);
 
+// Corpo OPCIONAL do finalizar: se vier um e-mail de fiscal válido, o link de aprovação é enviado.
+public record FinalizarRequest(string? EmailFiscal);
+// Corpo do reenvio do link de aprovação para um RDO já enviado.
+public record EnviarAprovacaoRequest(string Email);
+
 [ApiController]
 [Route("api/v1")]
 [Authorize]
-public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, IConfiguration cfg) : ControllerBase
+public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, IConfiguration cfg, IEmailSender email) : ControllerBase
 {
     // Planejador/Gestor/Admin acompanham RDOs de todas as obras; demais só das vinculadas.
     private bool VeTodasObras => User.IsInRole("Gestor") || User.IsInRole("Admin") || User.IsInRole("Planejador");
@@ -202,7 +208,7 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
     }
 
     [HttpPost("rdos/{id:guid}/finalizar")]
-    public async Task<IActionResult> Finalizar(Guid id)
+    public async Task<IActionResult> Finalizar(Guid id, [FromBody] FinalizarRequest? req = null)
     {
         var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
         if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
@@ -230,8 +236,61 @@ public class RdosController(AppDbContext db, IRdoPdf pdf, IStorage storage, ICon
         });
 
         await db.SaveChangesAsync();
-        return Ok(new { rdo.Id, Status = rdo.Status.ToString(), rdo.TokenAprovacao });
+
+        // Envio OPCIONAL do link de aprovação por e-mail — NUNCA impede o finalizar (try/catch dentro).
+        var (emailEnviado, emailPara) = await TentarEnviarAprovacaoAsync(rdo, req?.EmailFiscal);
+        return Ok(new { rdo.Id, Status = rdo.Status.ToString(), rdo.TokenAprovacao, emailEnviado, emailPara });
     }
+
+    /// <summary>Reenvia o link de aprovação por e-mail para um RDO que já está Enviado (usa o
+    /// TokenAprovacao atual). 400 se o RDO não estiver Enviado ou não tiver token.</summary>
+    [HttpPost("rdos/{id:guid}/enviar-aprovacao")]
+    public async Task<IActionResult> EnviarAprovacao(Guid id, [FromBody] EnviarAprovacaoRequest req)
+    {
+        var rdo = await db.Rdos.FirstOrDefaultAsync(r => r.Id == id);
+        if (rdo is null || !await PodeVerObra(rdo.ObraId)) return NotFound();
+        if (rdo.Status != RdoStatus.Enviado || string.IsNullOrEmpty(rdo.TokenAprovacao))
+            return BadRequest(new { erro = "O RDO precisa estar enviado (aguardando aprovação) para reenviar o link." });
+        if (!EhEmail(req?.Email))
+            return BadRequest(new { erro = "Informe um e-mail válido." });
+
+        var (emailEnviado, emailPara) = await TentarEnviarAprovacaoAsync(rdo, req!.Email);
+        return Ok(new { emailEnviado, emailPara });
+    }
+
+    // Envia o link de aprovação ao fiscal. Retorna (enviado, para). NUNCA lança: falha de e-mail
+    // (sem chave Resend, DNS, provedor fora) apenas resulta em enviado=false — o finalizar segue.
+    private async Task<(bool enviado, string? para)> TentarEnviarAprovacaoAsync(Rdo rdo, string? emailFiscal)
+    {
+        if (!EhEmail(emailFiscal) || string.IsNullOrEmpty(rdo.TokenAprovacao)) return (false, null);
+        var destino = emailFiscal!.Trim();
+        try
+        {
+            var obra = await db.Obras.FindAsync(rdo.ObraId);
+            var baseUrl = (cfg["App:BaseUrl"] ?? "http://localhost:5173").TrimEnd('/');
+            var link = $"{baseUrl}/aprovacao/{rdo.TokenAprovacao}";
+            var contrato = string.IsNullOrWhiteSpace(obra?.Contrato) ? "" : $" (contrato {obra!.Contrato})";
+            var assunto = $"RDO nº {rdo.Numero} — {obra?.Nome}: aguardando sua aprovação";
+            var html = $"""
+                <p>Olá,</p>
+                <p>O <strong>RDO nº {rdo.Numero}</strong> da obra <strong>{obra?.Nome}</strong>{contrato},
+                referente ao dia {rdo.Data:dd/MM/yyyy}, está aguardando a sua aprovação.</p>
+                <p><a href="{link}" style="display:inline-block;background:#0284c7;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Abrir e aprovar o RDO</a></p>
+                <p>Se o botão não funcionar, copie e cole este link no navegador:<br><a href="{link}">{link}</a></p>
+                <p>Você pode aprovar ou pedir revisão sem precisar de conta.</p>
+                """;
+            await email.EnviarAsync(destino, assunto, html);
+            return (true, destino);
+        }
+        catch
+        {
+            // Loga no EmailSender; aqui só sinalizamos que não saiu (não quebra o finalizar/reenvio).
+            return (false, destino);
+        }
+    }
+
+    private static bool EhEmail(string? s) =>
+        !string.IsNullOrWhiteSpace(s) && System.Net.Mail.MailAddress.TryCreate(s.Trim(), out _);
 
     /// <summary>Resumo automático do dia. Hoje por REGRAS (origem="regras"); a interface IResumoIa
     /// já está pronta para trocar por uma implementação LLM sem mudar este endpoint.</summary>
